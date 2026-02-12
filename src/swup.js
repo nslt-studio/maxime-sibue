@@ -2,8 +2,9 @@ import Swup from 'swup';
 import SwupPreloadPlugin from '@swup/preload-plugin';
 
 // ── Config ──────────────────────────────────────────────
-const FADE    = 300; // ms – fade duration per element
+const FADE    = 200; // ms – fade duration per element
 const STAGGER = 50;  // ms – delay between each categories-item
+const EASING  = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 // ── Helpers ─────────────────────────────────────────────
 function wait(ms) {
@@ -30,8 +31,8 @@ async function fadeOutProjectsLink() {
   const { projectsLink } = getNavElements();
   if (!projectsLink) return;
 
-  projectsLink.style.transition = `opacity ${FADE}ms ease`;
-  void projectsLink.offsetHeight; // force reflow so transition starts instantly
+  projectsLink.style.transition = `opacity ${FADE}ms ${EASING}`;
+  void projectsLink.offsetHeight;
   projectsLink.style.opacity = '0';
   projectsLink.style.pointerEvents = 'none';
 
@@ -47,7 +48,7 @@ async function fadeInProjectsLink() {
   projectsLink.style.opacity = '0';
   await raf();
 
-  projectsLink.style.transition = `opacity ${FADE}ms ease`;
+  projectsLink.style.transition = `opacity ${FADE}ms ${EASING}`;
   projectsLink.style.opacity = '1';
   projectsLink.style.pointerEvents = '';
 
@@ -68,27 +69,66 @@ async function fadeInCategoriesItems() {
   categories.style.pointerEvents = 'auto';
   items.forEach((item, i) => {
     const delay = i * STAGGER;
-    item.style.transition = `opacity ${FADE}ms ease ${delay}ms`;
+    item.style.transition = `opacity ${FADE}ms ${EASING} ${delay}ms`;
     item.style.opacity = '1';
   });
 
   await wait(FADE + (items.length - 1) * STAGGER);
 }
 
-// ── Stagger fade out categories-items (last → first) ────
+// ── Stagger fade out categories-items (first → last) ────
 async function fadeOutCategoriesItems() {
   const { categories, items } = getNavElements();
   if (!categories || !items.length) return;
 
-  const last = items.length - 1;
   items.forEach((item, i) => {
-    const delay = (last - i) * STAGGER;
-    item.style.transition = `opacity ${FADE}ms ease ${delay}ms`;
+    const delay = i * STAGGER;
+    item.style.transition = `opacity ${FADE}ms ${EASING} ${delay}ms`;
     item.style.opacity = '0';
   });
 
-  await wait(FADE + last * STAGGER);
+  await wait(FADE + (items.length - 1) * STAGGER);
   categories.style.pointerEvents = 'none';
+}
+
+// ── Combined nav transitions (overlap at FADE / 2) ──────
+async function navToProjects() {
+  const p1 = fadeOutProjectsLink();
+  await wait(FADE / 2);
+  const p2 = fadeInCategoriesItems();
+  await Promise.all([p1, p2]);
+}
+
+async function navFromProjects() {
+  const p1 = fadeOutCategoriesItems();
+  await wait(FADE / 2);
+  const p2 = fadeInProjectsLink();
+  await Promise.all([p1, p2]);
+}
+
+// ── Slide video-controls out (home page leave) ──────────
+async function slideOutVideoControls() {
+  const controls = document.querySelector('.video-controls');
+  if (!controls) return;
+
+  controls.style.transition = `transform ${FADE}ms ${EASING}`;
+  controls.style.transform = 'translateY(100%)';
+
+  await wait(FADE);
+}
+
+// ── Slide video-controls in (home page enter via Swup) ──
+async function slideInVideoControls() {
+  const controls = document.querySelector('.video-controls');
+  if (!controls) return;
+
+  controls.style.transition = 'none';
+  controls.style.transform = 'translateY(100%)';
+  void controls.offsetHeight;
+  controls.style.transition = `transform ${FADE}ms ${EASING}`;
+  controls.style.transform = 'translateY(0%)';
+
+  await wait(FADE);
 }
 
 // ── Set nav to "projects active" state (no animation) ───
@@ -151,8 +191,9 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
 
     const promises = [defaultHandler(visit, args)];
 
-    if (goingToProjects)  promises.push(fadeOutProjectsLink());
-    if (leavingProjects)  promises.push(fadeOutCategoriesItems());
+    if (fromNs === 'home')  promises.push(slideOutVideoControls());
+    if (goingToProjects)    promises.push(navToProjects());
+    if (leavingProjects)    promises.push(navFromProjects());
 
     await Promise.all(promises);
   });
@@ -163,8 +204,7 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     const toNs = getNamespace();
     const promises = [defaultHandler(visit, args)];
 
-    if (toNs === 'projects')  promises.push(fadeInCategoriesItems());
-    if (leavingProjects)      promises.push(fadeInProjectsLink());
+    if (toNs === 'home') promises.push(slideInVideoControls());
 
     await Promise.all(promises);
   });

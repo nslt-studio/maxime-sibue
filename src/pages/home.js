@@ -13,6 +13,7 @@ let pauseBtnDefaultText = '';
 let rafId = null;
 let scrollRafId = null;
 let list = null;
+let isScrollingTo = -1; // target index during programmatic scroll, -1 = not scrolling
 
 // rAF interpolation state
 let lastSeconds = 0;
@@ -26,41 +27,63 @@ export function initHome() {
   items = list ? [...list.querySelectorAll('.selected-item')] : [];
   if (!list || !items.length) return;
 
-  // Create Vimeo Player for each item
+  // Create all players and start buffering all videos simultaneously
   items.forEach((item, i) => {
     const iframe = item.querySelector('.selected-full iframe');
     if (!iframe) return;
-
-    // Mark iframe as managed (so global.js skips it)
     iframe.dataset.managed = 'true';
+
+    // oEmbed for aspect-ratio (lightweight JSON)
+    const cover = item.querySelector('.selected-cover');
+    const src = iframe.src || iframe.dataset.src;
+    if (src && cover) {
+      const videoId = src.match(/player\.vimeo\.com\/video\/(\d+)/)?.[1];
+      if (videoId) {
+        const h = src.match(/[?&]h=([a-f0-9]+)/)?.[1];
+        const vimeoUrl = h
+          ? `https://vimeo.com/${videoId}/${h}`
+          : `https://vimeo.com/${videoId}`;
+        fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(vimeoUrl)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.width && data.height) {
+              cover.style.aspectRatio = `${data.width} / ${data.height}`;
+            }
+          })
+          .catch(() => {});
+      }
+    }
 
     const player = new Player(iframe);
     playerMap.set(i, player);
-
-    // Disable loop so ended event fires
     player.setLoop(false);
+    player.setMuted(true);
 
-    // Fade in iframe when player is ready
-    player.ready().then(() => {
-      iframe.style.opacity = '1';
-    });
+    // Start playing muted immediately → forces Vimeo to buffer
+    player.play().catch(() => {});
 
-    // Progress tracking via timeupdate (updates ~4x/sec)
+    // Poster fade on first real frame
+    const poster = item.querySelector('.selected-full-poster');
+    let posterHidden = false;
+
     player.on('timeupdate', (data) => {
+      if (!posterHidden && poster && data.seconds > 0) {
+        posterHidden = true;
+        poster.style.transition = 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)';
+        poster.style.opacity = '0';
+        poster.style.pointerEvents = 'none';
+      }
       if (i !== activeIndex) return;
       lastSeconds = data.seconds;
       lastRafTime = performance.now();
       videoDuration = data.duration;
     });
 
-    // Auto-advance when video ends
     player.on('ended', () => {
       if (i !== activeIndex) return;
-      const nextIndex = (i + 1) % items.length;
-      scrollToItem(nextIndex);
+      scrollToItem((i + 1) % items.length);
     });
 
-    // Track playing state for rAF interpolation
     player.on('play', () => {
       if (i === activeIndex) {
         isPlaying = true;
@@ -72,7 +95,7 @@ export function initHome() {
     });
   });
 
-  // Scroll detection (debounced)
+  // Scroll detection (rAF-throttled)
   list.addEventListener('scroll', onScroll, { passive: true });
 
   // Click to scroll
@@ -104,6 +127,7 @@ export function cleanupHome() {
   items = [];
   list = null;
   activeIndex = -1;
+  isScrollingTo = -1;
   isPaused = false;
   isMuted = true;
   isPlaying = false;
@@ -121,6 +145,10 @@ function onScroll() {
 
 function detectSnappedItem() {
   if (!list || !items.length) return;
+
+  // During programmatic scroll, ignore intermediate positions
+  if (isScrollingTo >= 0) return;
+
   const listLeft = list.getBoundingClientRect().left;
 
   let closestIndex = 0;
@@ -143,11 +171,25 @@ function detectSnappedItem() {
 function scrollToItem(index) {
   if (!list || !items[index]) return;
 
+  // Lock active detection until scroll settles on target
+  isScrollingTo = index;
+
   const item = items[index];
   list.scrollTo({
     left: item.offsetLeft - list.offsetLeft,
     behavior: 'smooth',
   });
+
+  // Detect when scroll finishes, then unlock
+  let scrollEndTimer = null;
+  const onScrollEnd = () => {
+    clearTimeout(scrollEndTimer);
+    scrollEndTimer = setTimeout(() => {
+      list.removeEventListener('scroll', onScrollEnd);
+      isScrollingTo = -1;
+    }, 100);
+  };
+  list.addEventListener('scroll', onScrollEnd, { passive: true });
 
   // Reset pause on manual navigation
   isPaused = false;

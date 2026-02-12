@@ -1,11 +1,18 @@
-const DURATION = 300;
+const DURATION = 200;
+const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 export function injectStyles() {
   const css = `
+    /* === GLOBAL IMAGES (hidden until loaded) === */
+    img {
+      opacity: 0;
+      transition: opacity ${DURATION}ms ${EASING};
+    }
+
     /* === PAGE TRANSITION (FADE) === */
     .transition-fade {
       opacity: 1;
-      transition: opacity ${DURATION}ms ease;
+      transition: opacity ${DURATION}ms ${EASING};
     }
 
     html.is-animating .transition-fade {
@@ -20,7 +27,7 @@ export function injectStyles() {
     /* === SELECTED CAROUSEL (HOME) === */
     .selected-progress {
       opacity: 0;
-      transition: opacity ${DURATION}ms ease;
+      transition: opacity ${DURATION}ms ${EASING};
     }
 
     .selected-item.active .selected-progress {
