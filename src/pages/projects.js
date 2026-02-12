@@ -1,9 +1,5 @@
-import { setProjectsNavState } from '../swup.js';
-
 export function initProjects() {
-  // Set nav to "projects active" state immediately (no animation)
-  // This handles direct page load on /projects
-  setProjectsNavState();
+  // Projects page specific initialization
 }
 
 export function cleanupProjects() {

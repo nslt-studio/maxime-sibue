@@ -1,5 +1,5 @@
 import { injectStyles } from './styles.js';
-import { initSwup, resetProjectsNavState } from './swup.js';
+import { initSwup, setProjectsNavState, resetProjectsNavState } from './swup.js';
 import { initGlobal } from './global.js';
 import { initHome, cleanupHome } from './pages/home.js';
 import { initProjects, cleanupProjects } from './pages/projects.js';
@@ -34,11 +34,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initGlobal(swup);
 
-  // If initial page is NOT projects, ensure nav is in default state
-  if (getNamespace() !== 'projects') {
+  // Initial page load: set nav state instantly (no animation)
+  if (getNamespace() === 'projects') {
+    setProjectsNavState();
+  } else {
     resetProjectsNavState();
   }
 
-  // Init the page we landed on
   initCurrentPage();
 });

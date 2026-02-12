@@ -1,8 +1,9 @@
 import Swup from 'swup';
+import SwupPreloadPlugin from '@swup/preload-plugin';
 
 // ── Config ──────────────────────────────────────────────
-const DURATION = 300;      // ms – transition duration
-const STAGGER  = 60;       // ms – delay between each categories-item
+const FADE    = 300; // ms – fade duration per element
+const STAGGER = 50;  // ms – delay between each categories-item
 
 // ── Helpers ─────────────────────────────────────────────
 function wait(ms) {
@@ -17,136 +18,108 @@ function raf() {
   return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
-// ── Categories IN (arriving at projects) ────────────────
-// Projects link fades out + slides down,
-// then categories container appears,
-// then each categories-item staggers in from top
-async function animateCategoriesIn() {
+function getNavElements() {
   const projectsLink = document.querySelector('[data-link="projects"]');
   const categories = projectsLink?.parentElement?.querySelector('.categories');
   const items = categories ? [...categories.querySelectorAll('.categories-item')] : [];
+  return { projectsLink, categories, items };
+}
 
-  if (!projectsLink || !categories || !items.length) return;
+// ── Fade projectsLink out (immediate, no raf delay) ─────
+async function fadeOutProjectsLink() {
+  const { projectsLink } = getNavElements();
+  if (!projectsLink) return;
 
-  // 1. Fade out projects link (opacity 1 → 0, translateY 0 → 100%)
-  projectsLink.style.transition = `opacity ${DURATION}ms ease, transform ${DURATION}ms ease`;
+  projectsLink.style.transition = `opacity ${FADE}ms ease`;
+  void projectsLink.offsetHeight; // force reflow so transition starts instantly
   projectsLink.style.opacity = '0';
-  projectsLink.style.transform = 'translateY(100%)';
   projectsLink.style.pointerEvents = 'none';
 
-  // 2. Show categories container
-  categories.style.transition = `opacity ${DURATION}ms ease`;
-  categories.style.opacity = '1';
-  categories.style.pointerEvents = 'auto';
+  await wait(FADE);
+}
 
-  // 3. Prepare items at starting position (above, hidden)
+// ── Fade projectsLink in ────────────────────────────────
+async function fadeInProjectsLink() {
+  const { projectsLink } = getNavElements();
+  if (!projectsLink) return;
+
+  projectsLink.style.transition = 'none';
+  projectsLink.style.opacity = '0';
+  await raf();
+
+  projectsLink.style.transition = `opacity ${FADE}ms ease`;
+  projectsLink.style.opacity = '1';
+  projectsLink.style.pointerEvents = '';
+
+  await wait(FADE);
+}
+
+// ── Stagger fade in categories-items (first → last) ─────
+async function fadeInCategoriesItems() {
+  const { categories, items } = getNavElements();
+  if (!categories || !items.length) return;
+
   items.forEach(item => {
     item.style.transition = 'none';
     item.style.opacity = '0';
-    item.style.transform = 'translateY(-100%)';
   });
-
   await raf();
 
-  // 4. Stagger items in (opacity 0→1, translateY -100%→0%)
+  categories.style.pointerEvents = 'auto';
   items.forEach((item, i) => {
     const delay = i * STAGGER;
-    item.style.transition = `opacity ${DURATION}ms ease ${delay}ms, transform ${DURATION}ms ease ${delay}ms`;
+    item.style.transition = `opacity ${FADE}ms ease ${delay}ms`;
     item.style.opacity = '1';
-    item.style.transform = 'translateY(0%)';
   });
 
-  // 5. Wait for the last item to finish
-  await wait(DURATION + (items.length - 1) * STAGGER);
+  await wait(FADE + (items.length - 1) * STAGGER);
 }
 
-// ── Categories OUT (leaving projects) ───────────────────
-// Each categories-item staggers out to bottom,
-// then categories container hides,
-// then projects link fades back in from top
-async function animateCategoriesOut() {
-  const projectsLink = document.querySelector('[data-link="projects"]');
-  const categories = projectsLink?.parentElement?.querySelector('.categories');
-  const items = categories ? [...categories.querySelectorAll('.categories-item')] : [];
+// ── Stagger fade out categories-items (last → first) ────
+async function fadeOutCategoriesItems() {
+  const { categories, items } = getNavElements();
+  if (!categories || !items.length) return;
 
-  if (!projectsLink || !categories || !items.length) return;
-
-  // 1. Stagger items out (opacity 1→0, translateY 0%→100%)
+  const last = items.length - 1;
   items.forEach((item, i) => {
-    const delay = i * STAGGER;
-    item.style.transition = `opacity ${DURATION}ms ease ${delay}ms, transform ${DURATION}ms ease ${delay}ms`;
+    const delay = (last - i) * STAGGER;
+    item.style.transition = `opacity ${FADE}ms ease ${delay}ms`;
     item.style.opacity = '0';
-    item.style.transform = 'translateY(100%)';
   });
 
-  // Wait for last item to finish
-  await wait(DURATION + (items.length - 1) * STAGGER);
-
-  // 2. Hide categories container
-  categories.style.transition = 'none';
-  categories.style.opacity = '0';
+  await wait(FADE + last * STAGGER);
   categories.style.pointerEvents = 'none';
-
-  // 3. Fade projects link back in (opacity 0→1, translateY -100%→0%)
-  projectsLink.style.transition = 'none';
-  projectsLink.style.opacity = '0';
-  projectsLink.style.transform = 'translateY(-100%)';
-
-  await raf();
-
-  projectsLink.style.transition = `opacity ${DURATION}ms ease, transform ${DURATION}ms ease`;
-  projectsLink.style.opacity = '1';
-  projectsLink.style.transform = 'translateY(0%)';
-  projectsLink.style.pointerEvents = '';
-
-  await wait(DURATION);
 }
 
 // ── Set nav to "projects active" state (no animation) ───
 export function setProjectsNavState() {
-  const projectsLink = document.querySelector('[data-link="projects"]');
-  const categories = projectsLink?.parentElement?.querySelector('.categories');
-  const items = categories ? [...categories.querySelectorAll('.categories-item')] : [];
-
+  const { projectsLink, categories, items } = getNavElements();
   if (!projectsLink || !categories) return;
 
   projectsLink.style.transition = 'none';
   projectsLink.style.opacity = '0';
-  projectsLink.style.transform = 'translateY(100%)';
   projectsLink.style.pointerEvents = 'none';
 
-  categories.style.transition = 'none';
-  categories.style.opacity = '1';
   categories.style.pointerEvents = 'auto';
-
   items.forEach(item => {
     item.style.transition = 'none';
     item.style.opacity = '1';
-    item.style.transform = 'translateY(0%)';
   });
 }
 
 // ── Reset nav to default state (no animation) ───────────
 export function resetProjectsNavState() {
-  const projectsLink = document.querySelector('[data-link="projects"]');
-  const categories = projectsLink?.parentElement?.querySelector('.categories');
-  const items = categories ? [...categories.querySelectorAll('.categories-item')] : [];
-
+  const { projectsLink, categories, items } = getNavElements();
   if (!projectsLink || !categories) return;
 
   projectsLink.style.transition = 'none';
   projectsLink.style.opacity = '1';
-  projectsLink.style.transform = 'translateY(0%)';
   projectsLink.style.pointerEvents = '';
 
-  categories.style.transition = 'none';
-  categories.style.opacity = '0';
   categories.style.pointerEvents = 'none';
-
   items.forEach(item => {
     item.style.transition = 'none';
     item.style.opacity = '0';
-    item.style.transform = 'translateY(-100%)';
   });
 }
 
@@ -155,7 +128,10 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
   const swup = new Swup({
     containers: ['#swup'],
     animationSelector: '[class*="transition-"]',
+    plugins: [new SwupPreloadPlugin()],
   });
+
+  let leavingProjects = false;
 
   // ── Page lifecycle ──
   swup.hooks.before('content:replace', () => {
@@ -166,26 +142,29 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     initCurrentPage();
   });
 
-  // ── Out animation: replace default await to run nav + content in parallel ──
+  // ── Out animation ──
+  // Runs immediately on click → fade-outs start with zero delay
   swup.hooks.replace('animation:out:await', async (visit, args, defaultHandler) => {
     const fromNs = getNamespace();
+    const goingToProjects = !!visit.trigger.el?.closest('[data-link="projects"]');
+    leavingProjects = fromNs === 'projects' && !goingToProjects;
+
     const promises = [defaultHandler(visit, args)];
 
-    if (fromNs === 'projects') {
-      promises.push(animateCategoriesOut());
-    }
+    if (goingToProjects)  promises.push(fadeOutProjectsLink());
+    if (leavingProjects)  promises.push(fadeOutCategoriesItems());
 
     await Promise.all(promises);
   });
 
-  // ── In animation: replace default await to run nav + content in parallel ──
+  // ── In animation ──
+  // Runs after content swap → fade-ins appear on the new page
   swup.hooks.replace('animation:in:await', async (visit, args, defaultHandler) => {
-    const toNs = getNamespace(); // After content:replace, DOM has new namespace
+    const toNs = getNamespace();
     const promises = [defaultHandler(visit, args)];
 
-    if (toNs === 'projects') {
-      promises.push(animateCategoriesIn());
-    }
+    if (toNs === 'projects')  promises.push(fadeInCategoriesItems());
+    if (leavingProjects)      promises.push(fadeInProjectsLink());
 
     await Promise.all(promises);
   });

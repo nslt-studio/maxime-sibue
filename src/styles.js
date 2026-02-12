@@ -12,29 +12,33 @@ export function injectStyles() {
       opacity: 0;
     }
 
-    /* === CATEGORIES NAV === */
-    .categories {
+    /* === CATEGORIES NAV (items hidden by default, managed by swup.js) === */
+    .categories-item {
       opacity: 0;
-      pointer-events: none;
+    }
+
+    /* === SELECTED CAROUSEL (HOME) === */
+    .selected-progress {
+      opacity: 0;
       transition: opacity ${DURATION}ms ease;
     }
 
-    .categories-item {
-      opacity: 0;
-      transform: translateY(-100%);
-      transition:
-        opacity ${DURATION}ms ease var(--stagger-delay, 0ms),
-        transform ${DURATION}ms ease var(--stagger-delay, 0ms);
-    }
-
-    .categories-item.is-visible {
+    .selected-item.active .selected-progress {
       opacity: 1;
-      transform: translateY(0%);
     }
 
-    /* === PROJECTS LINK === */
-    [data-link="projects"] {
-      transition: opacity ${DURATION}ms ease, transform ${DURATION}ms ease;
+    .selected-item.active .selected-cover {
+      opacity: 1 !important;
+      -webkit-mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0,1) var(--progress, 0%),
+        rgba(0,0,0,0.4) var(--progress, 0%)
+      );
+      mask-image: linear-gradient(
+        to right,
+        rgba(0,0,0,1) var(--progress, 0%),
+        rgba(0,0,0,0.4) var(--progress, 0%)
+      );
     }
   `;
 
