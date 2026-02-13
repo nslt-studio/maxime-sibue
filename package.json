@@ -9,12 +9,11 @@
     "preview": "vite preview",
     "watch": "vite build --watch",
     "serve": "node dev-server.js",
-    "tunnel": "npx localtunnel --port 8787",
+    "tunnel": "npx cloudflared tunnel --url http://localhost:8787",
     "dev:live": "npm run watch & npm run serve & npm run tunnel"
   },
   "dependencies": {
     "@swup/preload-plugin": "^3.2.11",
-    "@vimeo/player": "^2.30.2",
     "swup": "^4.8.2"
   },
   "devDependencies": {

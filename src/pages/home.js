@@ -1,11 +1,10 @@
-import Player from '@vimeo/player';
-
 // ── Config ──────────────────────────────────────────────
-const SNAP_MARGIN = 200; // px – margin for scroll-snap detection
+const SNAP_MARGIN = 200;
+const TRANSITION = 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)';
 
 // ── Module state ────────────────────────────────────────
 let items = [];
-let playerMap = new Map();   // index → Vimeo Player
+let videos = [];
 let activeIndex = -1;
 let isMuted = true;
 let isPaused = false;
@@ -13,12 +12,12 @@ let pauseBtnDefaultText = '';
 let rafId = null;
 let scrollRafId = null;
 let list = null;
-let isScrollingTo = -1; // target index during programmatic scroll, -1 = not scrolling
+let isScrollingTo = -1;
 
 // rAF interpolation state
-let lastSeconds = 0;
+let lastTime = 0;
 let lastRafTime = 0;
-let videoDuration = 0;
+let duration = 0;
 let isPlaying = false;
 
 // ── Init ────────────────────────────────────────────────
@@ -27,89 +26,56 @@ export function initHome() {
   items = list ? [...list.querySelectorAll('.selected-item')] : [];
   if (!list || !items.length) return;
 
-  // Create all players and start buffering all videos simultaneously
   items.forEach((item, i) => {
-    const iframe = item.querySelector('.selected-full iframe');
-    if (!iframe) return;
-    iframe.dataset.managed = 'true';
+    const video = item.querySelector('.selected-full video');
+    if (!video) return;
 
-    // oEmbed for aspect-ratio (lightweight JSON)
-    const cover = item.querySelector('.selected-cover');
-    const src = iframe.src || iframe.dataset.src;
-    if (src && cover) {
-      const videoId = src.match(/player\.vimeo\.com\/video\/(\d+)/)?.[1];
-      if (videoId) {
-        const h = src.match(/[?&]h=([a-f0-9]+)/)?.[1];
-        const vimeoUrl = h
-          ? `https://vimeo.com/${videoId}/${h}`
-          : `https://vimeo.com/${videoId}`;
-        fetch(`https://vimeo.com/api/oembed.json?url=${encodeURIComponent(vimeoUrl)}`)
-          .then(r => r.json())
-          .then(data => {
-            if (data.width && data.height) {
-              cover.style.aspectRatio = `${data.width} / ${data.height}`;
-            }
-          })
-          .catch(() => {});
-      }
-    }
+    // Remove loop for auto-advance, ensure muted
+    video.removeAttribute('loop');
+    video.muted = true;
+    videos[i] = video;
 
-    const player = new Player(iframe);
-    playerMap.set(i, player);
-    player.setLoop(false);
-    player.setMuted(true);
-
-    // Start playing muted immediately → forces Vimeo to buffer
-    player.play().catch(() => {});
-
-    // Poster fade on first real frame
+    // Poster fade on first frame
     const poster = item.querySelector('.selected-full-poster');
     let posterHidden = false;
 
-    player.on('timeupdate', (data) => {
-      if (!posterHidden && poster && data.seconds > 0) {
+    video.addEventListener('timeupdate', () => {
+      if (!posterHidden && poster && video.currentTime > 0) {
         posterHidden = true;
-        poster.style.transition = 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)';
+        poster.style.transition = TRANSITION;
         poster.style.opacity = '0';
         poster.style.pointerEvents = 'none';
       }
       if (i !== activeIndex) return;
-      lastSeconds = data.seconds;
+      lastTime = video.currentTime;
       lastRafTime = performance.now();
-      videoDuration = data.duration;
+      duration = video.duration || 0;
     });
 
-    player.on('ended', () => {
+    video.addEventListener('ended', () => {
       if (i !== activeIndex) return;
       scrollToItem((i + 1) % items.length);
     });
 
-    player.on('play', () => {
+    video.addEventListener('play', () => {
       if (i === activeIndex) {
         isPlaying = true;
         lastRafTime = performance.now();
       }
     });
-    player.on('pause', () => {
+
+    video.addEventListener('pause', () => {
       if (i === activeIndex) isPlaying = false;
     });
+
+    // Start playing muted → forces browser to buffer
+    video.play().catch(() => {});
   });
 
-  // Scroll detection (rAF-throttled)
   list.addEventListener('scroll', onScroll, { passive: true });
-
-  // Click to scroll
-  items.forEach((item, i) => {
-    item.addEventListener('click', () => scrollToItem(i));
-  });
-
-  // Controls
+  items.forEach((item, i) => item.addEventListener('click', () => scrollToItem(i)));
   initControls();
-
-  // Start rAF progress loop
   startProgressLoop();
-
-  // Activate first item
   setActive(0);
 }
 
@@ -117,12 +83,8 @@ export function initHome() {
 export function cleanupHome() {
   cancelAnimationFrame(rafId);
   cancelAnimationFrame(scrollRafId);
-
-  playerMap.forEach(player => {
-    try { player.pause(); } catch {}
-  });
-  playerMap.clear();
-
+  videos.forEach(v => { if (v) v.pause(); });
+  videos = [];
   list?.removeEventListener('scroll', onScroll);
   items = [];
   list = null;
@@ -134,7 +96,7 @@ export function cleanupHome() {
   rafId = null;
 }
 
-// ── Scroll detection (rAF-throttled for instant feedback) ──
+// ── Scroll detection (rAF-throttled) ────────────────────
 function onScroll() {
   if (scrollRafId) return;
   scrollRafId = requestAnimationFrame(() => {
@@ -144,13 +106,9 @@ function onScroll() {
 }
 
 function detectSnappedItem() {
-  if (!list || !items.length) return;
-
-  // During programmatic scroll, ignore intermediate positions
-  if (isScrollingTo >= 0) return;
+  if (!list || !items.length || isScrollingTo >= 0) return;
 
   const listLeft = list.getBoundingClientRect().left;
-
   let closestIndex = 0;
   let closestDist = Infinity;
 
@@ -171,32 +129,25 @@ function detectSnappedItem() {
 function scrollToItem(index) {
   if (!list || !items[index]) return;
 
-  // Lock active detection until scroll settles on target
   isScrollingTo = index;
-
-  const item = items[index];
   list.scrollTo({
-    left: item.offsetLeft - list.offsetLeft,
+    left: items[index].offsetLeft - list.offsetLeft,
     behavior: 'smooth',
   });
 
-  // Detect when scroll finishes, then unlock
-  let scrollEndTimer = null;
-  const onScrollEnd = () => {
-    clearTimeout(scrollEndTimer);
-    scrollEndTimer = setTimeout(() => {
-      list.removeEventListener('scroll', onScrollEnd);
+  let timer = null;
+  const onEnd = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      list.removeEventListener('scroll', onEnd);
       isScrollingTo = -1;
     }, 100);
   };
-  list.addEventListener('scroll', onScrollEnd, { passive: true });
+  list.addEventListener('scroll', onEnd, { passive: true });
 
-  // Reset pause on manual navigation
   isPaused = false;
   const pauseBtn = document.querySelector('[data-controls="pause"]');
-  if (pauseBtn && pauseBtnDefaultText) {
-    pauseBtn.textContent = pauseBtnDefaultText;
-  }
+  if (pauseBtn && pauseBtnDefaultText) pauseBtn.textContent = pauseBtnDefaultText;
 
   setActive(index);
 }
@@ -204,56 +155,43 @@ function scrollToItem(index) {
 // ── Set active item ─────────────────────────────────────
 function setActive(index) {
   if (index === activeIndex) return;
-  const prevIndex = activeIndex;
+  const prev = activeIndex;
   activeIndex = index;
 
-  // Toggle .active class
-  items.forEach((item, i) => {
-    item.classList.toggle('active', i === index);
-  });
+  items.forEach((item, i) => item.classList.toggle('active', i === index));
 
-  // Pause previous video
-  if (prevIndex >= 0 && playerMap.has(prevIndex)) {
-    playerMap.get(prevIndex).pause();
-  }
+  if (prev >= 0 && videos[prev]) videos[prev].pause();
 
-  // Reset progress for new item
-  lastSeconds = 0;
+  lastTime = 0;
   lastRafTime = performance.now();
-  videoDuration = 0;
+  duration = 0;
   isPlaying = false;
   updateProgressUI(0, 0);
 
-  // Play new video
-  const player = playerMap.get(index);
-  if (player) {
-    player.setCurrentTime(0);
-    player.setMuted(isMuted);
+  const video = videos[index];
+  if (video) {
+    video.currentTime = 0;
+    video.muted = isMuted;
+    duration = video.duration || 0;
     if (!isPaused) {
-      player.play().then(() => {
+      video.play().then(() => {
         isPlaying = true;
         lastRafTime = performance.now();
-      });
+      }).catch(() => {});
     }
-    player.getDuration().then(d => { videoDuration = d; });
   }
 }
 
 // ── rAF progress loop (smooth 60fps interpolation) ──────
 function startProgressLoop() {
   function tick() {
-    if (activeIndex >= 0 && isPlaying && videoDuration > 0) {
-      const now = performance.now();
-      const elapsed = (now - lastRafTime) / 1000;
-      const currentTime = Math.min(lastSeconds + elapsed, videoDuration);
-      const progress = currentTime / videoDuration;
-
-      updateProgressUI(progress, currentTime);
+    if (activeIndex >= 0 && isPlaying && duration > 0) {
+      const elapsed = (performance.now() - lastRafTime) / 1000;
+      const currentTime = Math.min(lastTime + elapsed, duration);
+      updateProgressUI(currentTime / duration, currentTime);
     }
-
     rafId = requestAnimationFrame(tick);
   }
-
   rafId = requestAnimationFrame(tick);
 }
 
@@ -264,47 +202,39 @@ function updateProgressUI(progress, currentTime) {
 
   const pct = `${(progress * 100).toFixed(2)}%`;
 
-  // Progress bar position
   const bar = item.querySelector('.selected-progress');
   if (bar) bar.style.left = pct;
 
-  // Cover mask via custom property
   const cover = item.querySelector('.selected-cover');
   if (cover) cover.style.setProperty('--progress', pct);
 
-  // Duration display
   const durationEl = document.querySelector('#videoDuration');
   if (durationEl) durationEl.textContent = formatTime(currentTime);
 }
 
 // ── Controls ────────────────────────────────────────────
 function initControls() {
-  // Pause / Play
   const pauseBtn = document.querySelector('[data-controls="pause"]');
   if (pauseBtn) {
     pauseBtnDefaultText = pauseBtn.textContent;
     pauseBtn.addEventListener('click', togglePause);
   }
 
-  // Mute / Unmute
   const muteBtn = document.querySelector('[data-controls="muted"]');
-  if (muteBtn) {
-    muteBtn.addEventListener('click', toggleMute);
-  }
+  if (muteBtn) muteBtn.addEventListener('click', toggleMute);
 }
 
 function togglePause() {
-  const player = playerMap.get(activeIndex);
+  const video = videos[activeIndex];
   const pauseBtn = document.querySelector('[data-controls="pause"]');
-  if (!player || !pauseBtn) return;
+  if (!video || !pauseBtn) return;
 
   isPaused = !isPaused;
-
   if (isPaused) {
-    player.pause();
+    video.pause();
     pauseBtn.textContent = 'Jouer';
   } else {
-    player.play();
+    video.play();
     pauseBtn.textContent = pauseBtnDefaultText;
   }
 }
@@ -316,8 +246,8 @@ function toggleMute() {
   isMuted = !isMuted;
   muteBtn.classList.toggle('active', isMuted);
 
-  const player = playerMap.get(activeIndex);
-  if (player) player.setMuted(isMuted);
+  const video = videos[activeIndex];
+  if (video) video.muted = isMuted;
 }
 
 // ── Format time as 00:00:000 ────────────────────────────

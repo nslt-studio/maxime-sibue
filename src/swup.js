@@ -106,6 +106,31 @@ async function navFromProjects() {
   await Promise.all([p1, p2]);
 }
 
+// ── Slide footer out (leaving projects/info → home) ─────
+async function slideOutFooter() {
+  const footer = document.querySelector('.footer');
+  if (!footer) return;
+
+  footer.style.transition = `transform ${FADE}ms ${EASING}`;
+  footer.style.transform = 'translateY(100%)';
+
+  await wait(FADE);
+}
+
+// ── Slide footer in (home → projects/info) ──────────────
+async function slideInFooter() {
+  const footer = document.querySelector('.footer');
+  if (!footer) return;
+
+  footer.style.transition = 'none';
+  footer.style.transform = 'translateY(100%)';
+  void footer.offsetHeight;
+  footer.style.transition = `transform ${FADE}ms ${EASING}`;
+  footer.style.transform = 'translateY(0%)';
+
+  await wait(FADE);
+}
+
 // ── Slide video-controls out (home page leave) ──────────
 async function slideOutVideoControls() {
   const controls = document.querySelector('.video-controls');
@@ -172,6 +197,7 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
   });
 
   let leavingProjects = false;
+  let animateFooterIn = false;
 
   // ── Page lifecycle ──
   swup.hooks.before('content:replace', () => {
@@ -183,28 +209,45 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
   });
 
   // ── Out animation ──
-  // Runs immediately on click → fade-outs start with zero delay
   swup.hooks.replace('animation:out:await', async (visit, args, defaultHandler) => {
     const fromNs = getNamespace();
     const goingToProjects = !!visit.trigger.el?.closest('[data-link="projects"]');
+    const goingToHome = !!visit.trigger.el?.closest('[data-link="home"]');
     leavingProjects = fromNs === 'projects' && !goingToProjects;
+
+    const hasFooter = fromNs === 'projects' || fromNs === 'information';
+    const goingToInfo = !!visit.trigger.el?.closest('[data-link="information"]');
+    // Projects → Info: animate only if footer is not visible in viewport
+    const footer = document.querySelector('.footer');
+    const footerVisible = footer ? footer.getBoundingClientRect().top < window.innerHeight : false;
+    const shouldAnimateFooter = hasFooter && (
+      goingToHome ||
+      (fromNs === 'information' && goingToProjects) ||
+      (fromNs === 'projects' && goingToInfo && !footerVisible)
+    );
+    animateFooterIn = fromNs === 'home' ||
+      (fromNs === 'information' && goingToProjects) ||
+      (fromNs === 'projects' && goingToInfo && !footerVisible);
 
     const promises = [defaultHandler(visit, args)];
 
-    if (fromNs === 'home')  promises.push(slideOutVideoControls());
-    if (goingToProjects)    promises.push(navToProjects());
-    if (leavingProjects)    promises.push(navFromProjects());
+    if (fromNs === 'home')    promises.push(slideOutVideoControls());
+    if (shouldAnimateFooter)  promises.push(slideOutFooter());
+    if (goingToProjects)      promises.push(navToProjects());
+    if (leavingProjects)      promises.push(navFromProjects());
 
     await Promise.all(promises);
   });
 
   // ── In animation ──
-  // Runs after content swap → fade-ins appear on the new page
   swup.hooks.replace('animation:in:await', async (visit, args, defaultHandler) => {
     const toNs = getNamespace();
+    const hasFooter = toNs === 'projects' || toNs === 'information';
+
     const promises = [defaultHandler(visit, args)];
 
-    if (toNs === 'home') promises.push(slideInVideoControls());
+    if (toNs === 'home')              promises.push(slideInVideoControls());
+    if (hasFooter && animateFooterIn) promises.push(slideInFooter());
 
     await Promise.all(promises);
   });
