@@ -1,4 +1,5 @@
 import { injectStyles } from './styles.js';
+import { runLoader } from './loader.js';
 import { initSwup, setProjectsNavState, resetProjectsNavState } from './swup.js';
 import { initGlobal } from './global.js';
 import { initHome, cleanupHome } from './pages/home.js';
@@ -29,6 +30,7 @@ function cleanupCurrentPage() {
 // ── Boot ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   injectStyles();
+  runLoader();
 
   const swup = initSwup({ initCurrentPage, cleanupCurrentPage });
 
