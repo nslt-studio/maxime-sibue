@@ -2,7 +2,6 @@ let clockInterval = null;
 
 export function initGlobal(swup) {
   updateActiveLink();
-  watchImages();
   startFooterClock();
 
   swup.hooks.on('page:view', () => {
@@ -14,7 +13,6 @@ export function initGlobal(swup) {
   });
 
   swup.hooks.on('content:replace', () => {
-    watchImages();
     startFooterClock();
   });
 }
@@ -55,18 +53,4 @@ function stopFooterClock() {
     clearInterval(clockInterval);
     clockInterval = null;
   }
-}
-
-// Fade in images when loaded
-function watchImages() {
-  document.querySelectorAll('img').forEach(img => {
-    if (img.dataset.watched) return;
-    img.dataset.watched = 'true';
-
-    if (img.complete && img.naturalWidth > 0) {
-      img.style.opacity = '1';
-    } else {
-      img.addEventListener('load', () => { img.style.opacity = '1'; }, { once: true });
-    }
-  });
 }

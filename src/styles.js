@@ -1,14 +1,8 @@
-const DURATION = 200;
+const DURATION = 300;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
 export function injectStyles() {
   const css = `
-    /* === GLOBAL IMAGES (hidden until loaded) === */
-    img {
-      opacity: 0;
-      transition: opacity ${DURATION}ms ${EASING};
-    }
-
     /* === PAGE TRANSITION (FADE) === */
     .transition-fade {
       opacity: 1;
@@ -30,12 +24,12 @@ export function injectStyles() {
       transition: opacity ${DURATION}ms ${EASING};
     }
 
-    .selected-item.active .selected-progress {
+    .selected-item.active .selected-progress,
+    .selected-item.active .selected-cover {
       opacity: 1;
     }
 
     .selected-item.active .selected-cover {
-      opacity: 1 !important;
       -webkit-mask-image: linear-gradient(
         to right,
         rgba(0,0,0,1) var(--progress, 0%),
@@ -46,6 +40,21 @@ export function injectStyles() {
         rgba(0,0,0,1) var(--progress, 0%),
         rgba(0,0,0,0.4) var(--progress, 0%)
       );
+    }
+
+    /* === DETAILS PAGE === */
+    .progress-bar {
+      transform-origin: left;
+    }
+
+    /* === PROJECT PROGRESS BAR (details page, CSS animation) === */
+    .project-progress {
+      width: 0;
+      transition: width ${2 * DURATION}ms ${EASING};
+    }
+
+    .project-progress.is-visible {
+      width: 100%;
     }
   `;
 

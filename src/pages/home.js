@@ -57,15 +57,28 @@ export function initHome() {
       scrollToItem((i + 1) % items.length);
     });
 
-    video.addEventListener('play', () => {
+    // 'playing' fires only when video is ACTUALLY rendering (not just buffering)
+    video.addEventListener('playing', () => {
       if (i === activeIndex) {
         isPlaying = true;
+        lastTime = video.currentTime;
         lastRafTime = performance.now();
       }
     });
 
+    // 'waiting' fires when video stalls (buffering)
+    video.addEventListener('waiting', () => {
+      if (i === activeIndex) {
+        isPlaying = false;
+        lastTime = video.currentTime;
+      }
+    });
+
     video.addEventListener('pause', () => {
-      if (i === activeIndex) isPlaying = false;
+      if (i === activeIndex) {
+        isPlaying = false;
+        lastTime = video.currentTime;
+      }
     });
 
     // Start playing muted → forces browser to buffer
@@ -83,7 +96,14 @@ export function initHome() {
 export function cleanupHome() {
   cancelAnimationFrame(rafId);
   cancelAnimationFrame(scrollRafId);
-  videos.forEach(v => { if (v) v.pause(); });
+  // Cancel all video downloads (free bandwidth for next page)
+  videos.forEach(v => {
+    if (v) {
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+    }
+  });
   videos = [];
   list?.removeEventListener('scroll', onScroll);
   items = [];
@@ -174,10 +194,8 @@ function setActive(index) {
     video.muted = isMuted;
     duration = video.duration || 0;
     if (!isPaused) {
-      video.play().then(() => {
-        isPlaying = true;
-        lastRafTime = performance.now();
-      }).catch(() => {});
+      video.play().catch(() => {});
+      // 'playing' event will set isPlaying = true when actually rendering
     }
   }
 }
