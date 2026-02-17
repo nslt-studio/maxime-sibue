@@ -1,7 +1,7 @@
 const FADE = 400;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 const STEP = 100;       // ms between each item
-const HOLD = 600;      // ms to hold last item before collapsing
+const HOLD = 300;      // ms to hold last item before collapsing
 const KEY = 'loaderDone';
 
 export function runLoader() {

@@ -1,7 +1,7 @@
 const FADE = 300;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
-let activeCategories = new Set();
+let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
 
@@ -19,7 +19,7 @@ export function initProjects() {
     btn.classList.remove('active');
     btn.addEventListener('click', () => onCategoryClick(btn), { signal });
   });
-  activeCategories.clear();
+  activeCategory = null;
 
   // Reset any stale inline styles on items
   document.querySelectorAll('.projects-item[data-filter]').forEach(item => {
@@ -71,15 +71,16 @@ export function initProjects() {
   });
 }
 
-// ── Category filtering (multi-select) ───────────────────
+// ── Category filtering (single-select) ───────────────────
 function onCategoryClick(btn) {
   const category = btn.dataset.categories;
 
-  if (activeCategories.has(category)) {
-    activeCategories.delete(category);
+  if (activeCategory === category) {
+    activeCategory = null;
     btn.classList.remove('active');
   } else {
-    activeCategories.add(category);
+    categoryButtons.forEach(b => b.classList.remove('active'));
+    activeCategory = category;
     btn.classList.add('active');
   }
 
@@ -88,7 +89,7 @@ function onCategoryClick(btn) {
 
 function applyFilter() {
   document.querySelectorAll('.projects-item[data-filter]').forEach(item => {
-    const shouldShow = activeCategories.size === 0 || activeCategories.has(item.dataset.filter);
+    const shouldShow = !activeCategory || activeCategory === item.dataset.filter;
     if (shouldShow) {
       expandItem(item);
     } else {
@@ -135,7 +136,7 @@ export function cleanupProjects() {
 
   // Remove all listeners + reset state
   if (btnController) { btnController.abort(); btnController = null; }
-  activeCategories.clear();
+  activeCategory = null;
   categoryButtons.forEach(btn => btn.classList.remove('active'));
   categoryButtons = [];
 

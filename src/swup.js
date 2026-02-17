@@ -100,10 +100,8 @@ async function navToProjects() {
 }
 
 async function navFromProjects() {
-  const p1 = fadeOutCategoriesItems();
-  await wait(FADE / 2);
-  const p2 = fadeInProjectsLink();
-  await Promise.all([p1, p2]);
+  await fadeOutCategoriesItems();
+  await fadeInProjectsLink();
 }
 
 // ── Slide footer out ─────────────────────────────────────
@@ -127,6 +125,56 @@ async function slideInFooter() {
   void footer.offsetHeight;
   footer.style.transition = `transform ${FADE}ms ${EASING}`;
   footer.style.transform = 'translateY(0%)';
+
+  await wait(FADE);
+}
+
+// ── Slide copyrights out ────────────────────────────────
+async function slideOutCopyrights() {
+  const el = document.querySelector('.copyrights');
+  if (!el) return;
+
+  el.style.transition = `transform ${FADE}ms ${EASING}`;
+  el.style.transform = 'translateY(100%)';
+
+  await wait(FADE);
+}
+
+// ── Slide copyrights in ─────────────────────────────────
+async function slideInCopyrights() {
+  const el = document.querySelector('.copyrights');
+  if (!el) return;
+
+  el.style.transition = 'none';
+  el.style.transform = 'translateY(100%)';
+  void el.offsetHeight;
+  el.style.transition = `transform ${FADE}ms ${EASING}`;
+  el.style.transform = 'translateY(0%)';
+
+  await wait(FADE);
+}
+
+// ── Slide project-index out ─────────────────────────────
+async function slideOutProjectIndex() {
+  const el = document.querySelector('.project-index');
+  if (!el) return;
+
+  el.style.transition = `transform ${FADE}ms ${EASING}`;
+  el.style.transform = 'translateY(100%)';
+
+  await wait(FADE);
+}
+
+// ── Slide project-index in ──────────────────────────────
+async function slideInProjectIndex() {
+  const el = document.querySelector('.project-index');
+  if (!el) return;
+
+  el.style.transition = 'none';
+  el.style.transform = 'translateY(100%)';
+  void el.offsetHeight;
+  el.style.transition = `transform ${FADE}ms ${EASING}`;
+  el.style.transform = 'translateY(0%)';
 
   await wait(FADE);
 }
@@ -302,12 +350,48 @@ export function resetProjectsNavState() {
   });
 }
 
-// ── Detect "going to details" from trigger element ───────
-function isGoingToDetails(visit) {
+// ── Detect destination namespace from URL ────────────────
+function detectDestination(visit) {
   const el = visit.trigger.el;
-  if (!el) return false;
-  return !!el.closest('[data-page="details"]') ||
-    (!el.closest('[data-link]') && !el.closest('#close'));
+
+  // From trigger element (click navigation)
+  if (el) {
+    return {
+      goingToProjects: !!el.closest('[data-link="projects"]'),
+      goingToHome: !!el.closest('[data-link="home"]'),
+      goingToInfo: !!el.closest('[data-link="information"]'),
+      goingToDetails: !!el.closest('[data-page="details"]') ||
+        (!el.closest('[data-link]') && !el.closest('#close')),
+    };
+  }
+
+  // Fallback: parse destination URL (popstate / back-forward)
+  const url = (visit.to.url || '').replace(/\/$/, '') || '/';
+  return {
+    goingToProjects: url === '/projects',
+    goingToHome: url === '/',
+    goingToInfo: url === '/informations',
+    goingToDetails: url.startsWith('/projects/'),
+  };
+}
+
+// ── Safety: ensure persistent elements match final state ─
+function ensurePersistentState(ns) {
+  const nav = document.querySelector('.nav');
+  const copyrights = document.querySelector('.copyrights');
+  const projectIndex = document.querySelector('.project-index');
+
+  if (ns === 'details') {
+    if (nav) { nav.style.opacity = '0'; nav.style.pointerEvents = 'none'; }
+  } else {
+    if (nav) {
+      nav.style.transition = '';
+      nav.style.opacity = '1';
+      nav.style.pointerEvents = '';
+    }
+    if (copyrights) { copyrights.style.transform = ''; copyrights.style.transition = ''; }
+    if (projectIndex) { projectIndex.style.transform = ''; projectIndex.style.transition = ''; }
+  }
 }
 
 // ── Init Swup ───────────────────────────────────────────
@@ -316,6 +400,13 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     containers: ['#swup'],
     animationSelector: '[class*="transition-"]',
     plugins: [new SwupPreloadPlugin()],
+  });
+
+  // Force animations on popstate (back/forward button)
+  swup.hooks.on('visit:start', (visit) => {
+    if (!visit.trigger.el) {
+      visit.animation.animate = true;
+    }
   });
 
   let leavingProjects = false;
@@ -358,10 +449,7 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     previousNs = fromNs;
     previousUrl = visit.from.url;
 
-    const goingToProjects = !!visit.trigger.el?.closest('[data-link="projects"]');
-    const goingToHome = !!visit.trigger.el?.closest('[data-link="home"]');
-    const goingToDetails = isGoingToDetails(visit);
-    const goingToInfo = !!visit.trigger.el?.closest('[data-link="information"]');
+    const { goingToProjects, goingToHome, goingToDetails, goingToInfo } = detectDestination(visit);
 
     leavingProjects = fromNs === 'projects' && !goingToProjects;
     leavingDetails = fromNs === 'details';
@@ -395,6 +483,11 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     if (goingToProjects && !leavingDetails) promises.push(navToProjects());
     if (leavingProjects && !goingToDetails) promises.push(navFromProjects());
 
+    // Copyrights out when going to details from home/projects
+    if (goingToDetails && (fromNs === 'home' || fromNs === 'projects')) {
+      promises.push(slideOutCopyrights());
+    }
+
     // Nav hide when going to details (from any page)
     if (goingToDetails) {
       if (fromNs === 'projects') {
@@ -418,6 +511,8 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
       if (detailsEnteredFrom === 'projects') {
         promises.push(slideOutVideoControls());
       }
+      // Project-index out (always when leaving details)
+      promises.push(slideOutProjectIndex());
     }
 
     await Promise.all(promises);
@@ -443,9 +538,15 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     // Entering details (nav already hidden in out-animation)
     if (toNs === 'details') {
       promises.push(fadeInProjectHeader());
+      promises.push(slideInProjectIndex());
       if (detailsEnteredFrom === 'projects') {
         promises.push(slideInVideoControls());
       }
+    }
+
+    // Copyrights in when leaving details to home/projects
+    if (leavingDetails && (toNs === 'home' || toNs === 'projects')) {
+      promises.push(slideInCopyrights());
     }
 
     // Leaving details → arriving elsewhere
@@ -477,6 +578,9 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     }
 
     await Promise.all(promises);
+
+    // Safety: force persistent elements to correct state after animations
+    ensurePersistentState(toNs);
 
     // Reset flag
     leavingDetails = false;

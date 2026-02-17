@@ -15,6 +15,7 @@ let lastRafTime = 0;
 let duration = 0;
 let observer = null;
 let abortController = null;
+let blinkInterval = null;
 
 // ── Init ────────────────────────────────────────────────
 export function initDetails() {
@@ -25,10 +26,10 @@ export function initDetails() {
 
   videos = [...document.querySelectorAll('#swup video')];
 
-  // Hide #index if 0 or 1 video
-  const indexEl = document.querySelector('#index');
-  if (indexEl && videos.length <= 1) {
-    indexEl.style.display = 'none';
+  // Hide .project-index if 0 or 1 video
+  const projectIndexEl = document.querySelector('.project-index');
+  if (projectIndexEl && videos.length <= 1) {
+    projectIndexEl.style.display = 'none';
   }
 
   // Setup each video
@@ -122,6 +123,9 @@ export function initDetails() {
   // Close button
   initCloseButton();
 
+  // #next blink + scroll-to-next (only if multiple videos)
+  initNextHint(signal);
+
   // Init progress bar state
   const bar = document.querySelector('.progress-bar');
   if (bar) {
@@ -144,6 +148,7 @@ export function initDetails() {
 // ── Cleanup ─────────────────────────────────────────────
 export function cleanupDetails() {
   cancelAnimationFrame(rafId);
+  if (blinkInterval) { clearInterval(blinkInterval); blinkInterval = null; }
   if (observer) { observer.disconnect(); observer = null; }
   if (abortController) { abortController.abort(); abortController = null; }
   // Cancel all video downloads (free bandwidth for next page)
@@ -291,6 +296,44 @@ function initCloseButton() {
   if (!closeBtn) return;
 
   closeBtn.setAttribute('href', window.__detailsReturnUrl || '/');
+}
+
+// ── #next blink hint + scroll to next video ─────────────
+function initNextHint(signal) {
+  const nextEl = document.querySelector('#next');
+  if (!nextEl || videos.length <= 1) return;
+
+  // Start blink: 300ms per state, linear
+  let visible = true;
+  nextEl.style.opacity = '1';
+  nextEl.style.transition = 'opacity 300ms linear';
+  blinkInterval = setInterval(() => {
+    visible = !visible;
+    nextEl.style.opacity = visible ? '1' : '0';
+  }, 600);
+
+  function hideNext() {
+    clearInterval(blinkInterval);
+    blinkInterval = null;
+    nextEl.style.transition = `opacity ${FADE}ms ${EASING}`;
+    nextEl.style.opacity = '0';
+    nextEl.style.pointerEvents = 'none';
+  }
+
+  // Hide on any scroll (snap container)
+  const scrollContainer = document.querySelector('.project-item-wrapper') || window;
+  scrollContainer.addEventListener('scroll', () => {
+    if (blinkInterval) hideNext();
+  }, { once: true, signal });
+
+  // Click: scroll to next video + hide
+  nextEl.addEventListener('click', () => {
+    hideNext();
+    const nextVideo = videos[1];
+    if (nextVideo) {
+      nextVideo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, { once: true, signal });
 }
 
 // ── Format services (wrap each in a block span for stagger animation) ─
