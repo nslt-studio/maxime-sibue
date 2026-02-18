@@ -4,6 +4,7 @@ const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
+let fadeObserver = null;
 
 export function initProjects() {
   const items = document.querySelectorAll('.projects-item');
@@ -69,6 +70,23 @@ export function initProjects() {
       video.pause();
     }, { signal });
   });
+
+  // Fade items when their top reaches the bottom of .nav
+  const nav = document.querySelector('.nav');
+  if (nav) {
+    const navH = nav.getBoundingClientRect().height;
+    fadeObserver = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          entry.target.style.transition = entry.isIntersecting ? `opacity ${FADE}ms ${EASING}` : 'none';
+          entry.target.style.opacity = entry.isIntersecting ? '' : '0.1';
+          entry.target.style.pointerEvents = entry.isIntersecting ? '' : 'none';
+        });
+      },
+      { rootMargin: `-${navH}px 0px 0px 0px`, threshold: 0 }
+    );
+    items.forEach(item => fadeObserver.observe(item));
+  }
 }
 
 // ── Category filtering (single-select) ───────────────────
@@ -135,6 +153,7 @@ export function cleanupProjects() {
   });
 
   // Remove all listeners + reset state
+  if (fadeObserver) { fadeObserver.disconnect(); fadeObserver = null; }
   if (btnController) { btnController.abort(); btnController = null; }
   activeCategory = null;
   categoryButtons.forEach(btn => btn.classList.remove('active'));
@@ -144,5 +163,7 @@ export function cleanupProjects() {
     item.style.height = '';
     item.style.overflow = '';
     item.style.transition = '';
+    item.style.opacity = '';
+    item.style.pointerEvents = '';
   });
 }

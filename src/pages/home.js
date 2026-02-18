@@ -5,6 +5,7 @@ const TRANSITION = 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)';
 // ── Module state ────────────────────────────────────────
 let items = [];
 let videos = [];
+let posters = [];
 let activeIndex = -1;
 let isMuted = true;
 let isPaused = false;
@@ -37,11 +38,10 @@ export function initHome() {
 
     // Poster fade on first frame
     const poster = item.querySelector('.selected-full-poster');
-    let posterHidden = false;
+    posters[i] = poster;
 
     video.addEventListener('timeupdate', () => {
-      if (!posterHidden && poster && video.currentTime > 0) {
-        posterHidden = true;
+      if (poster && poster.style.opacity !== '0' && video.currentTime > 0) {
         poster.style.transition = TRANSITION;
         poster.style.opacity = '0';
         poster.style.pointerEvents = 'none';
@@ -81,12 +81,11 @@ export function initHome() {
       }
     });
 
-    // Start playing muted → forces browser to buffer
-    video.play().catch(() => {});
   });
 
   list.addEventListener('scroll', onScroll, { passive: true });
-  items.forEach((item, i) => item.addEventListener('click', () => scrollToItem(i)));
+  list.addEventListener('wheel', onWheel, { passive: false });
+  items.forEach((item, i) => item.addEventListener('click', () => clickItem(i)));
   initControls();
   startProgressLoop();
   setActive(0);
@@ -105,7 +104,9 @@ export function cleanupHome() {
     }
   });
   videos = [];
+  posters = [];
   list?.removeEventListener('scroll', onScroll);
+  list?.removeEventListener('wheel', onWheel);
   items = [];
   list = null;
   activeIndex = -1;
@@ -114,6 +115,45 @@ export function cleanupHome() {
   isMuted = true;
   isPlaying = false;
   rafId = null;
+}
+
+// ── Click item (just mark active + scroll) ──────────────
+function clickItem(index) {
+  if (!list || !items[index]) return;
+  isScrollingTo = index;
+  items.forEach((item, i) => item.classList.toggle('active', i === index));
+  list.scrollTo({
+    left: items[index].offsetLeft - list.offsetLeft,
+    behavior: 'smooth',
+  });
+
+  let timer = null;
+  const onEnd = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      list.removeEventListener('scroll', onEnd);
+      isScrollingTo = -1;
+      setActive(index);
+    }, 100);
+  };
+  list.addEventListener('scroll', onEnd, { passive: true });
+}
+
+// ── Wheel → horizontal scroll ────────────────────────────
+let wheelLocked = false;
+
+function onWheel(e) {
+  if (!list || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  e.preventDefault();
+  if (wheelLocked) return;
+
+  const direction = e.deltaY > 0 ? 1 : -1;
+  const target = activeIndex + direction;
+  if (target < 0 || target >= items.length) return;
+
+  wheelLocked = true;
+  clickItem(target);
+  setTimeout(() => { wheelLocked = false; }, 600);
 }
 
 // ── Scroll detection (rAF-throttled) ────────────────────
@@ -180,7 +220,18 @@ function setActive(index) {
 
   items.forEach((item, i) => item.classList.toggle('active', i === index));
 
-  if (prev >= 0 && videos[prev]) videos[prev].pause();
+  // Reset previous item: video to 0, progress to 0, poster visible
+  if (prev >= 0) {
+    const prevVideo = videos[prev];
+    if (prevVideo) {
+      prevVideo.pause();
+      prevVideo.currentTime = 0;
+    }
+    const prevBar = items[prev]?.querySelector('.selected-progress');
+    if (prevBar) prevBar.style.left = '0%';
+    const prevCover = items[prev]?.querySelector('.selected-cover');
+    if (prevCover) prevCover.style.setProperty('--progress', '0%');
+  }
 
   lastTime = 0;
   lastRafTime = performance.now();
@@ -190,12 +241,17 @@ function setActive(index) {
 
   const video = videos[index];
   if (video) {
-    video.currentTime = 0;
     video.muted = isMuted;
     duration = video.duration || 0;
     if (!isPaused) {
-      video.play().catch(() => {});
-      // 'playing' event will set isPlaying = true when actually rendering
+      video.play().then(() => {
+        if (activeIndex === index) {
+          isPlaying = true;
+          lastTime = video.currentTime;
+          lastRafTime = performance.now();
+          duration = video.duration || 0;
+        }
+      }).catch(() => {});
     }
   }
 }

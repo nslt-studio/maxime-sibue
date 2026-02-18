@@ -15,7 +15,9 @@ let lastRafTime = 0;
 let duration = 0;
 let observer = null;
 let abortController = null;
-let blinkInterval = null;
+let projectItems = [];
+let indexItems = [];
+let isScrollingToItem = false;
 
 // ── Init ────────────────────────────────────────────────
 export function initDetails() {
@@ -26,11 +28,34 @@ export function initDetails() {
 
   videos = [...document.querySelectorAll('#swup video')];
 
-  // Hide .project-index if 0 or 1 video
-  const projectIndexEl = document.querySelector('.project-index');
-  if (projectIndexEl && videos.length <= 1) {
-    projectIndexEl.style.display = 'none';
-  }
+  // Project items and index items (matched by title attribute)
+  projectItems = [...document.querySelectorAll('[project-item]')];
+  indexItems = [...document.querySelectorAll('.project-index-item[project-index]')];
+
+  // Click on index item → scroll to matching project item
+  indexItems.forEach(indexItem => {
+    indexItem.addEventListener('click', () => {
+      const title = indexItem.getAttribute('project-index');
+      const target = projectItems.find(p => p.getAttribute('project-item') === title);
+      if (!target) return;
+
+      isScrollingToItem = true;
+      updateActiveIndex(title);
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Unlock observer after scroll settles
+      let timer = null;
+      const scrollParent = target.closest('.project-item-wrapper') || window;
+      const onEnd = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          scrollParent.removeEventListener('scroll', onEnd);
+          isScrollingToItem = false;
+        }, 150);
+      };
+      scrollParent.addEventListener('scroll', onEnd, { passive: true });
+    }, { signal });
+  });
 
   // Setup each video
   videos.forEach((video, i) => {
@@ -43,12 +68,9 @@ export function initDetails() {
     const show = () => { video.style.opacity = '1'; };
 
     if (video.readyState >= 2) {
-      // Direct page load: already has data
       show();
     } else {
-      // Swup navigation: force browser to start loading
       video.load();
-      // Show as soon as video can actually display something
       video.addEventListener('loadeddata', show, { once: true, signal });
       video.addEventListener('playing', show, { once: true, signal });
     }
@@ -61,7 +83,6 @@ export function initDetails() {
       duration = video.duration || 0;
     }, { signal });
 
-    // 'playing' fires only when video is ACTUALLY playing (after buffering)
     video.addEventListener('playing', () => {
       if (i === activeIndex) {
         isPlaying = true;
@@ -70,7 +91,6 @@ export function initDetails() {
       }
     }, { signal });
 
-    // 'waiting' fires when video stalls (buffering)
     video.addEventListener('waiting', () => {
       if (i === activeIndex) {
         isPlaying = false;
@@ -93,38 +113,33 @@ export function initDetails() {
     }, { signal });
   });
 
-  // IntersectionObserver: play in viewport, pause out
+  // IntersectionObserver on .project-item: activate matching index item + play video
   observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      const video = entry.target;
-      const index = videos.indexOf(video);
-      if (index === -1) return;
+      const item = entry.target;
+      const title = item.getAttribute('project-item');
+      const video = item.querySelector('video');
+      const videoIndex = video ? videos.indexOf(video) : -1;
 
       if (entry.isIntersecting) {
-        setActive(index);
+        if (!isScrollingToItem) {
+          if (title) updateActiveIndex(title);
+        }
+        if (videoIndex !== -1) setActive(videoIndex);
       } else {
-        video.pause();
-        if (index === activeIndex) isPlaying = false;
+        if (video) video.pause();
+        if (videoIndex === activeIndex) isPlaying = false;
       }
     });
   }, { threshold: 0.5 });
 
-  videos.forEach(video => observer.observe(video));
+  projectItems.forEach(item => observer.observe(item));
 
-  // Controls (same pattern as home)
+  // Controls
   initControls(signal);
-
-  // Progress bar (click to seek)
   initProgressBar(signal);
-
-  // rAF progress loop
   startProgressLoop();
-
-  // Close button
   initCloseButton();
-
-  // #next blink + scroll-to-next (only if multiple videos)
-  initNextHint(signal);
 
   // Init progress bar state
   const bar = document.querySelector('.progress-bar');
@@ -133,7 +148,7 @@ export function initDetails() {
     bar.style.transform = 'scaleX(0)';
   }
 
-  // Animate project-progress in via CSS class (double rAF for transition)
+  // Animate project-progress in
   const progress = document.querySelector('.project-progress');
   if (progress) {
     progress.classList.remove('is-visible');
@@ -148,20 +163,20 @@ export function initDetails() {
 // ── Cleanup ─────────────────────────────────────────────
 export function cleanupDetails() {
   cancelAnimationFrame(rafId);
-  if (blinkInterval) { clearInterval(blinkInterval); blinkInterval = null; }
   if (observer) { observer.disconnect(); observer = null; }
   if (abortController) { abortController.abort(); abortController = null; }
-  // Cancel all video downloads (free bandwidth for next page)
   videos.forEach(v => {
     v.pause();
     v.removeAttribute('src');
     v.load();
   });
 
-  // Remove progress animation class
   const progress = document.querySelector('.project-progress');
   if (progress) progress.classList.remove('is-visible');
 
+  indexItems.forEach(item => item.classList.remove('active'));
+  indexItems = [];
+  projectItems = [];
   videos = [];
   activeIndex = -1;
   isPaused = false;
@@ -173,24 +188,27 @@ export function cleanupDetails() {
   duration = 0;
 }
 
+// ── Update active index item ────────────────────────────
+function updateActiveIndex(title) {
+  indexItems.forEach(item => {
+    item.classList.toggle('active', item.getAttribute('project-index') === title);
+  });
+}
+
 // ── Set active video ────────────────────────────────────
 function setActive(index) {
   if (index === activeIndex) return;
   const prev = activeIndex;
   activeIndex = index;
 
-  // Pause previous
   if (prev >= 0 && videos[prev]) videos[prev].pause();
 
-  // Reset progress state
   lastTime = 0;
   lastRafTime = performance.now();
   duration = 0;
   isPlaying = false;
   updateProgressUI(0, 0);
-  updateIndex();
 
-  // Play new — 'playing' event will set isPlaying = true
   const video = videos[index];
   if (video) {
     video.currentTime = 0;
@@ -222,15 +240,6 @@ function updateProgressUI(progress, currentTime) {
 
   const durationEl = document.querySelector('#videoDuration');
   if (durationEl) durationEl.textContent = formatTime(currentTime);
-}
-
-// ── Update index display (01 / 06) ─────────────────────
-function updateIndex() {
-  const el = document.querySelector('#index');
-  if (!el || videos.length <= 1) return;
-  const current = String(activeIndex + 1).padStart(2, '0');
-  const total = String(videos.length).padStart(2, '0');
-  el.textContent = `${current} / ${total}`;
 }
 
 // ── Controls (pause / mute) ─────────────────────────────
@@ -296,44 +305,6 @@ function initCloseButton() {
   if (!closeBtn) return;
 
   closeBtn.setAttribute('href', window.__detailsReturnUrl || '/');
-}
-
-// ── #next blink hint + scroll to next video ─────────────
-function initNextHint(signal) {
-  const nextEl = document.querySelector('#next');
-  if (!nextEl || videos.length <= 1) return;
-
-  // Start blink: 300ms per state, linear
-  let visible = true;
-  nextEl.style.opacity = '1';
-  nextEl.style.transition = 'opacity 300ms linear';
-  blinkInterval = setInterval(() => {
-    visible = !visible;
-    nextEl.style.opacity = visible ? '1' : '0';
-  }, 600);
-
-  function hideNext() {
-    clearInterval(blinkInterval);
-    blinkInterval = null;
-    nextEl.style.transition = `opacity ${FADE}ms ${EASING}`;
-    nextEl.style.opacity = '0';
-    nextEl.style.pointerEvents = 'none';
-  }
-
-  // Hide on any scroll (snap container)
-  const scrollContainer = document.querySelector('.project-item-wrapper') || window;
-  scrollContainer.addEventListener('scroll', () => {
-    if (blinkInterval) hideNext();
-  }, { once: true, signal });
-
-  // Click: scroll to next video + hide
-  nextEl.addEventListener('click', () => {
-    hideNext();
-    const nextVideo = videos[1];
-    if (nextVideo) {
-      nextVideo.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, { once: true, signal });
 }
 
 // ── Format services (wrap each in a block span for stagger animation) ─
