@@ -61,6 +61,7 @@ async function fadeInCategoriesItems() {
   if (!categories || !items.length) return;
 
   items.forEach(item => {
+    item.getAnimations().forEach(a => a.cancel());
     item.style.transition = 'none';
     item.style.opacity = '0';
   });
@@ -81,14 +82,23 @@ async function fadeOutCategoriesItems() {
   const { categories, items } = getNavElements();
   if (!categories || !items.length) return;
 
+  // Mirror of fadeInCategoriesItems: reset → raf → transition + value.
+  items.forEach(item => {
+    item.getAnimations().forEach(a => a.cancel());
+    item.style.transition = 'none';
+    item.style.opacity = '1';
+  });
+  await raf();
+
+  categories.style.pointerEvents = 'none';
   items.forEach((item, i) => {
-    const delay = i * STAGGER;
+    // iOS Safari bug: transition-delay:0ms doesn't fire → use 1ms minimum.
+    const delay = Math.max(1, i * STAGGER);
     item.style.transition = `opacity ${FADE}ms ${EASING} ${delay}ms`;
     item.style.opacity = '0';
   });
 
   await wait(FADE + (items.length - 1) * STAGGER);
-  categories.style.pointerEvents = 'none';
 }
 
 // ── Combined nav transitions (overlap at FADE / 2) ──────
@@ -329,6 +339,7 @@ export function setProjectsNavState() {
 
   categories.style.pointerEvents = 'auto';
   items.forEach(item => {
+    item.getAnimations().forEach(a => a.cancel());
     item.style.transition = 'none';
     item.style.opacity = '1';
   });
@@ -345,6 +356,7 @@ export function resetProjectsNavState() {
 
   categories.style.pointerEvents = 'none';
   items.forEach(item => {
+    item.getAnimations().forEach(a => a.cancel());
     item.style.transition = 'none';
     item.style.opacity = '0';
   });

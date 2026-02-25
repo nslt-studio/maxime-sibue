@@ -20,7 +20,9 @@ export function initInformation() {
   });
 
   // Play immediately
-  video.play().catch(() => {});
+  video.play().catch(() => {
+    video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
+  });
 }
 
 export function cleanupInformation() {

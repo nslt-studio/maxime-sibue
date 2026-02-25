@@ -15,10 +15,6 @@ let scrollRafId = null;
 let list = null;
 let isScrollingTo = -1;
 
-// rAF interpolation state
-let lastTime = 0;
-let lastRafTime = 0;
-let duration = 0;
 let isPlaying = false;
 
 // ── Init ────────────────────────────────────────────────
@@ -46,10 +42,6 @@ export function initHome() {
         poster.style.opacity = '0';
         poster.style.pointerEvents = 'none';
       }
-      if (i !== activeIndex) return;
-      lastTime = video.currentTime;
-      lastRafTime = performance.now();
-      duration = video.duration || 0;
     });
 
     video.addEventListener('ended', () => {
@@ -59,26 +51,16 @@ export function initHome() {
 
     // 'playing' fires only when video is ACTUALLY rendering (not just buffering)
     video.addEventListener('playing', () => {
-      if (i === activeIndex) {
-        isPlaying = true;
-        lastTime = video.currentTime;
-        lastRafTime = performance.now();
-      }
+      if (i === activeIndex) isPlaying = true;
     });
 
     // 'waiting' fires when video stalls (buffering)
     video.addEventListener('waiting', () => {
-      if (i === activeIndex) {
-        isPlaying = false;
-        lastTime = video.currentTime;
-      }
+      if (i === activeIndex) isPlaying = false;
     });
 
     video.addEventListener('pause', () => {
-      if (i === activeIndex) {
-        isPlaying = false;
-        lastTime = video.currentTime;
-      }
+      if (i === activeIndex) isPlaying = false;
     });
 
   });
@@ -233,36 +215,34 @@ function setActive(index) {
     if (prevCover) prevCover.style.setProperty('--progress', '0%');
   }
 
-  lastTime = 0;
-  lastRafTime = performance.now();
-  duration = 0;
   isPlaying = false;
   updateProgressUI(0, 0);
 
   const video = videos[index];
   if (video) {
     video.muted = isMuted;
-    duration = video.duration || 0;
     if (!isPaused) {
-      video.play().then(() => {
-        if (activeIndex === index) {
-          isPlaying = true;
-          lastTime = video.currentTime;
-          lastRafTime = performance.now();
-          duration = video.duration || 0;
-        }
-      }).catch(() => {});
+      video.play().catch(() => {
+        video.addEventListener('canplay', () => {
+          if (activeIndex === index && !isPaused) video.play().catch(() => {});
+        }, { once: true });
+      });
     }
   }
+
+  // Preload next video
+  const nextVideo = videos[(index + 1) % items.length];
+  if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
 }
 
-// ── rAF progress loop (smooth 60fps interpolation) ──────
+// ── rAF progress loop ────────────────────────────────────
 function startProgressLoop() {
   function tick() {
-    if (activeIndex >= 0 && isPlaying && duration > 0) {
-      const elapsed = (performance.now() - lastRafTime) / 1000;
-      const currentTime = Math.min(lastTime + elapsed, duration);
-      updateProgressUI(currentTime / duration, currentTime);
+    if (activeIndex >= 0 && isPlaying) {
+      const video = videos[activeIndex];
+      if (video && video.duration > 0) {
+        updateProgressUI(video.currentTime / video.duration, video.currentTime);
+      }
     }
     rafId = requestAnimationFrame(tick);
   }

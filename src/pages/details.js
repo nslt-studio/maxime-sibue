@@ -10,9 +10,6 @@ let isPaused = false;
 let pauseBtnDefaultText = '';
 let rafId = null;
 let isPlaying = false;
-let lastTime = 0;
-let lastRafTime = 0;
-let duration = 0;
 let observer = null;
 let abortController = null;
 let projectItems = [];
@@ -57,10 +54,12 @@ export function initDetails() {
     }, { signal });
   });
 
+  initLoadingAnimations(signal);
+
   // Setup each video
   videos.forEach((video, i) => {
     video.muted = true;
-    video.preload = 'auto';
+    video.preload = 'metadata';
 
     // Start hidden, fade in when video has frames to show
     video.style.opacity = '0';
@@ -70,46 +69,26 @@ export function initDetails() {
     if (video.readyState >= 2) {
       show();
     } else {
-      video.load();
+      // Don't load yet — setActive will trigger loading when this video becomes active
       video.addEventListener('loadeddata', show, { once: true, signal });
       video.addEventListener('playing', show, { once: true, signal });
     }
 
-    // Sync progress state on each timeupdate
-    video.addEventListener('timeupdate', () => {
-      if (i !== activeIndex) return;
-      lastTime = video.currentTime;
-      lastRafTime = performance.now();
-      duration = video.duration || 0;
-    }, { signal });
-
     video.addEventListener('playing', () => {
-      if (i === activeIndex) {
-        isPlaying = true;
-        lastTime = video.currentTime;
-        lastRafTime = performance.now();
-      }
+      if (i !== activeIndex) return;
+      isPlaying = true;
     }, { signal });
 
     video.addEventListener('waiting', () => {
-      if (i === activeIndex) {
-        isPlaying = false;
-        lastTime = video.currentTime;
-      }
+      if (i === activeIndex) isPlaying = false;
     }, { signal });
 
     video.addEventListener('pause', () => {
-      if (i === activeIndex) {
-        isPlaying = false;
-        lastTime = video.currentTime;
-      }
+      if (i === activeIndex) isPlaying = false;
     }, { signal });
 
     video.addEventListener('ended', () => {
-      if (i === activeIndex) {
-        isPlaying = false;
-        lastTime = video.currentTime;
-      }
+      if (i === activeIndex) isPlaying = false;
     }, { signal });
   });
 
@@ -125,7 +104,16 @@ export function initDetails() {
         if (!isScrollingToItem) {
           if (title) updateActiveIndex(title);
         }
-        if (videoIndex !== -1) setActive(videoIndex);
+        if (videoIndex !== -1) {
+          if (videoIndex === activeIndex) {
+            // Même vidéo qui revient dans le viewport → reprendre depuis la position actuelle
+            if (video && video.paused && !isPaused) {
+              video.play().catch(() => {});
+            }
+          } else {
+            setActive(videoIndex);
+          }
+        }
       } else {
         if (video) video.pause();
         if (videoIndex === activeIndex) isPlaying = false;
@@ -183,9 +171,6 @@ export function cleanupDetails() {
   isMuted = true;
   isPlaying = false;
   rafId = null;
-  lastTime = 0;
-  lastRafTime = 0;
-  duration = 0;
 }
 
 // ── Update active index item ────────────────────────────
@@ -203,30 +188,35 @@ function setActive(index) {
 
   if (prev >= 0 && videos[prev]) videos[prev].pause();
 
-  lastTime = 0;
-  lastRafTime = performance.now();
-  duration = 0;
   isPlaying = false;
   updateProgressUI(0, 0);
 
   const video = videos[index];
   if (video) {
-    video.currentTime = 0;
     video.muted = isMuted;
-    duration = video.duration || 0;
     if (!isPaused) {
-      video.play().catch(() => {});
+      if (video.readyState === 0) video.load();
+      video.play().catch(() => {
+        video.addEventListener('canplay', () => {
+          if (activeIndex === index && !isPaused) video.play().catch(() => {});
+        }, { once: true, signal: abortController?.signal });
+      });
     }
   }
+
+  // Preload next video
+  const nextVideo = videos[index + 1];
+  if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
 }
 
-// ── rAF progress loop (smooth 60fps interpolation) ──────
+// ── rAF progress loop ────────────────────────────────────
 function startProgressLoop() {
   function tick() {
-    if (activeIndex >= 0 && isPlaying && duration > 0) {
-      const elapsed = (performance.now() - lastRafTime) / 1000;
-      const currentTime = Math.min(lastTime + elapsed, duration);
-      updateProgressUI(currentTime / duration, currentTime);
+    if (activeIndex >= 0 && isPlaying) {
+      const video = videos[activeIndex];
+      if (video && video.duration > 0) {
+        updateProgressUI(video.currentTime / video.duration, video.currentTime);
+      }
     }
     rafId = requestAnimationFrame(tick);
   }
@@ -292,11 +282,34 @@ function initProgressBar(signal) {
     const video = videos[activeIndex];
     if (video && video.duration) {
       video.currentTime = ratio * video.duration;
-      lastTime = video.currentTime;
-      lastRafTime = performance.now();
       updateProgressUI(ratio, video.currentTime);
     }
   }, { signal });
+}
+
+// ── Loading animation (letter wave until video plays) ────
+function initLoadingAnimations(signal) {
+  projectItems.forEach(item => {
+    const loadingEl = [...item.querySelectorAll('p')]
+      .find(p => p.textContent.trim() === 'Chargement');
+    if (!loadingEl) return;
+
+    // Split each character into an animated span
+    const chars = [...loadingEl.textContent];
+    const n = chars.length;
+    loadingEl.innerHTML = chars
+      .map((char, i) => `<span class="loading-letter" style="--i:${i};--n:${n}">${char}</span>`)
+      .join('');
+
+    const video = item.querySelector('video');
+    if (!video) return;
+
+    // Fade out once video actually plays
+    video.addEventListener('playing', () => {
+      loadingEl.style.transition = `opacity ${FADE}ms ${EASING}`;
+      loadingEl.style.opacity = '0';
+    }, { once: true, signal });
+  });
 }
 
 // ── Close button (set href, let Swup handle navigation) ─

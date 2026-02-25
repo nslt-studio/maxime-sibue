@@ -42,9 +42,23 @@ export function injectStyles() {
       );
     }
 
+    /* === DETAILS - LOADING ANIMATION === */
+    @keyframes loading-wave {
+      0%, 100% { opacity: 0.15; }
+      50%      { opacity: 1;    }
+    }
+
+    .loading-letter {
+      display: inline-block;
+      opacity: 0.15;
+      animation: loading-wave 1200ms ease-in-out infinite;
+      animation-delay: calc(var(--i) * 120ms);
+    }
+
     /* === DETAILS PAGE === */
     .progress-bar {
       transform-origin: left;
+      transition: none !important;
     }
 
     /* === PROJECT PROGRESS BAR (details page, CSS animation) === */

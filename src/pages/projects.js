@@ -78,12 +78,24 @@ export function initProjects() {
     fadeObserver = new IntersectionObserver(
       entries => {
         entries.forEach(entry => {
-          entry.target.style.transition = entry.isIntersecting ? `opacity ${FADE}ms ${EASING}` : 'none';
-          entry.target.style.opacity = entry.isIntersecting ? '' : '0.1';
-          entry.target.style.pointerEvents = entry.isIntersecting ? '' : 'none';
+          if (entry.isIntersecting) {
+            entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
+            entry.target.style.opacity = '';
+            entry.target.style.pointerEvents = '';
+          } else if (entry.boundingClientRect.top < navH + 40) {
+            // Sorti par le haut (sous la nav) → fade out
+            entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
+            entry.target.style.opacity = '0.1';
+            entry.target.style.pointerEvents = 'none';
+          } else {
+            // Sorti par le bas → opacité normale
+            entry.target.style.transition = 'none';
+            entry.target.style.opacity = '';
+            entry.target.style.pointerEvents = '';
+          }
         });
       },
-      { rootMargin: `-${navH}px 0px 0px 0px`, threshold: 0 }
+      { rootMargin: `-${navH + 40}px 0px 0px 0px`, threshold: 0 }
     );
     items.forEach(item => fadeObserver.observe(item));
   }
