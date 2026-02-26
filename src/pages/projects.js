@@ -5,6 +5,7 @@ let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
 let fadeObserver = null;
+let navH = 0;
 
 export function initProjects() {
   const items = document.querySelectorAll('.projects-item');
@@ -30,59 +31,39 @@ export function initProjects() {
   });
 
   items.forEach(item => {
-    const coverInner = item.querySelector('.projects-cover-inner');
-    if (!coverInner) return;
-
-    const video = coverInner.querySelector('video');
-    const poster = coverInner.querySelector('.projects-cover-poster');
+    const video = item.querySelector('.projects-cover-inner video');
+    const poster = item.querySelector('.projects-cover-inner .projects-cover-poster');
     if (!video) return;
 
-    // Aspect-ratio from video metadata
-    video.addEventListener('loadedmetadata', () => {
-      if (video.videoWidth && video.videoHeight) {
-        coverInner.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
-      }
-    }, { signal });
-
-    // Poster fade on first frame
+    // Poster fade when video starts playing
     let posterHidden = false;
-    video.addEventListener('timeupdate', () => {
-      if (!posterHidden && poster && video.currentTime > 0) {
+    video.addEventListener('playing', () => {
+      if (!posterHidden && poster) {
         posterHidden = true;
         poster.style.transition = `opacity ${FADE}ms ${EASING}`;
         poster.style.opacity = '0';
         poster.style.pointerEvents = 'none';
       }
     }, { signal });
-
-    // Prevent autoplay and any loading until hover
-    video.removeAttribute('autoplay');
-    video.preload = 'none';
-    if (!video.paused) video.pause();
-
-    // Load + play only on hover
-    item.addEventListener('mouseenter', () => {
-      if (video.readyState === 0) video.load();
-      video.play().catch(() => {});
-    }, { signal });
-
-    item.addEventListener('mouseleave', () => {
-      video.pause();
-    }, { signal });
   });
 
-  // Fade items when their top reaches the bottom of .nav
+  // Play/pause + fade nav selon viewport
   const nav = document.querySelector('.nav');
-  if (nav) {
-    const navH = nav.getBoundingClientRect().height;
-    fadeObserver = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
-            entry.target.style.opacity = '';
-            entry.target.style.pointerEvents = '';
-          } else if (entry.boundingClientRect.top < navH + 40) {
+  navH = nav ? nav.getBoundingClientRect().height : 0;
+
+  fadeObserver = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        const video = entry.target.querySelector('.projects-cover-inner video');
+
+        if (entry.isIntersecting) {
+          entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
+          entry.target.style.opacity = '';
+          entry.target.style.pointerEvents = '';
+          if (video) video.play().catch(() => {});
+        } else {
+          if (video) video.pause();
+          if (entry.boundingClientRect.top < navH + 40) {
             // Sorti par le haut (sous la nav) → fade out
             entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
             entry.target.style.opacity = '0.1';
@@ -93,12 +74,12 @@ export function initProjects() {
             entry.target.style.opacity = '';
             entry.target.style.pointerEvents = '';
           }
-        });
-      },
-      { rootMargin: `-${navH + 40}px 0px 0px 0px`, threshold: 0 }
-    );
-    items.forEach(item => fadeObserver.observe(item));
-  }
+        }
+      });
+    },
+    { rootMargin: `-${navH + 40}px 0px 0px 0px`, threshold: 0 }
+  );
+  items.forEach(item => fadeObserver.observe(item));
 }
 
 // ── Category filtering (single-select) ───────────────────
@@ -160,11 +141,12 @@ export function cleanupProjects() {
   // Cancel all project video downloads (free bandwidth for next page)
   document.querySelectorAll('.projects-cover-inner video').forEach(v => {
     v.pause();
-    v.removeAttribute('src');
+    v.querySelectorAll('source').forEach(s => s.removeAttribute('src'));
     v.load();
   });
 
   // Remove all listeners + reset state
+  navH = 0;
   if (fadeObserver) { fadeObserver.disconnect(); fadeObserver = null; }
   if (btnController) { btnController.abort(); btnController = null; }
   activeCategory = null;

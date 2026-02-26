@@ -81,7 +81,7 @@ export function cleanupHome() {
   videos.forEach(v => {
     if (v) {
       v.pause();
-      v.removeAttribute('src');
+      v.querySelectorAll('source').forEach(s => s.removeAttribute('src'));
       v.load();
     }
   });

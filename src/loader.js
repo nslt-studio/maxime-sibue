@@ -45,12 +45,12 @@ function collapseLoader(loader) {
   loader.style.height = '0px';
 
   loader.addEventListener('transitionend', () => {
-    loader.style.display = 'none';
+    loader.remove();
     sessionStorage.setItem(KEY, '1');
   }, { once: true });
 }
 
 function hideLoaderInstant() {
   const loader = document.querySelector('.loader');
-  if (loader) loader.style.display = 'none';
+  if (loader) loader.remove();
 }

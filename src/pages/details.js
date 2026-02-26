@@ -155,7 +155,7 @@ export function cleanupDetails() {
   if (abortController) { abortController.abort(); abortController = null; }
   videos.forEach(v => {
     v.pause();
-    v.removeAttribute('src');
+    v.querySelectorAll('source').forEach(s => s.removeAttribute('src'));
     v.load();
   });
 
