@@ -32,12 +32,13 @@ export function initHome() {
     video.muted = true;
     videos[i] = video;
 
-    // Poster fade on first frame
+    // Poster fade as soon as video data is ready — even if item isn't active yet.
+    // This ensures the poster is already hidden by the time the user scrolls to it.
     const poster = item.querySelector('.selected-full-poster');
     posters[i] = poster;
 
-    video.addEventListener('timeupdate', () => {
-      if (poster && poster.style.opacity !== '0' && video.currentTime > 0) {
+    video.addEventListener('canplay', () => {
+      if (poster && poster.style.opacity !== '0') {
         poster.style.transition = TRANSITION;
         poster.style.opacity = '0';
         poster.style.pointerEvents = 'none';
@@ -177,21 +178,22 @@ function scrollToItem(index) {
     behavior: 'smooth',
   });
 
+  isPaused = false;
+  const pauseBtn = document.querySelector('[data-controls="pause"]');
+  if (pauseBtn && pauseBtnDefaultText) pauseBtn.textContent = pauseBtnDefaultText;
+
+  // Wait for scroll to complete before starting video — prevents poster flicker and
+  // video playback from firing timeupdate (which hides the poster) during the scroll.
   let timer = null;
   const onEnd = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
       list.removeEventListener('scroll', onEnd);
       isScrollingTo = -1;
+      setActive(index);
     }, 100);
   };
   list.addEventListener('scroll', onEnd, { passive: true });
-
-  isPaused = false;
-  const pauseBtn = document.querySelector('[data-controls="pause"]');
-  if (pauseBtn && pauseBtnDefaultText) pauseBtn.textContent = pauseBtnDefaultText;
-
-  setActive(index);
 }
 
 // ── Set active item ─────────────────────────────────────
@@ -202,7 +204,7 @@ function setActive(index) {
 
   items.forEach((item, i) => item.classList.toggle('active', i === index));
 
-  // Reset previous item: video to 0, progress to 0, poster visible
+  // Reset previous item: video to 0, progress to 0, poster back to visible
   if (prev >= 0) {
     const prevVideo = videos[prev];
     if (prevVideo) {
@@ -230,9 +232,13 @@ function setActive(index) {
     }
   }
 
-  // Preload next video
-  const nextVideo = videos[(index + 1) % items.length];
-  if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
+  // Preload next 2 videos so their posters (canplay) hide before the user scrolls to them
+  for (let offset = 1; offset <= 2; offset++) {
+    const nextIdx = (index + offset) % items.length;
+    if (nextIdx === index) continue;
+    const nextVideo = videos[nextIdx];
+    if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
+  }
 }
 
 // ── rAF progress loop ────────────────────────────────────

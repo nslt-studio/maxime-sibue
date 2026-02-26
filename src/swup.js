@@ -119,6 +119,9 @@ async function slideOutFooter() {
   const footer = document.querySelector('.footer');
   if (!footer) return;
 
+  // opacity: '1' prevents html.is-animating CSS rule (opacity: 0) from instantly
+  // hiding transition-fade elements — we own this element via transform only.
+  footer.style.opacity = '1';
   footer.style.transition = `transform ${FADE}ms ${EASING}`;
   footer.style.transform = 'translateY(100%)';
 
@@ -130,6 +133,7 @@ async function slideInFooter() {
   const footer = document.querySelector('.footer');
   if (!footer) return;
 
+  footer.style.opacity = '1';
   footer.style.transition = 'none';
   footer.style.transform = 'translateY(100%)';
   void footer.offsetHeight;
@@ -144,6 +148,7 @@ async function slideOutCopyrights() {
   const el = document.querySelector('.copyrights');
   if (!el) return;
 
+  el.style.opacity = '1';
   el.style.transition = `transform ${FADE}ms ${EASING}`;
   el.style.transform = 'translateY(100%)';
 
@@ -155,6 +160,7 @@ async function slideInCopyrights() {
   const el = document.querySelector('.copyrights');
   if (!el) return;
 
+  el.style.opacity = '1';
   el.style.transition = 'none';
   el.style.transform = 'translateY(100%)';
   void el.offsetHeight;
@@ -169,6 +175,7 @@ async function slideOutProjectIndex() {
   const el = document.querySelector('.project-index');
   if (!el) return;
 
+  el.style.opacity = '1';
   el.style.transition = `transform ${FADE}ms ${EASING}`;
   el.style.transform = 'translateY(100%)';
 
@@ -180,6 +187,7 @@ async function slideInProjectIndex() {
   const el = document.querySelector('.project-index');
   if (!el) return;
 
+  el.style.opacity = '1';
   el.style.transition = 'none';
   el.style.transform = 'translateY(100%)';
   void el.offsetHeight;
@@ -194,6 +202,7 @@ async function slideOutVideoControls() {
   const controls = document.querySelector('.video-controls');
   if (!controls) return;
 
+  controls.style.opacity = '1';
   controls.style.transition = `transform ${FADE}ms ${EASING}`;
   controls.style.transform = 'translateY(100%)';
 
@@ -205,6 +214,7 @@ async function slideInVideoControls() {
   const controls = document.querySelector('.video-controls');
   if (!controls) return;
 
+  controls.style.opacity = '1';
   controls.style.transition = 'none';
   controls.style.transform = 'translateY(100%)';
   void controls.offsetHeight;
@@ -285,7 +295,8 @@ async function fadeOutProjectHeader() {
   // Stagger fade out top → bottom in each column simultaneously
   [col1, col2, col3].forEach(col => {
     col.forEach((el, i) => {
-      const delay = i * STAGGER;
+      // iOS Safari bug: transition-delay:0ms doesn't fire → use 1ms minimum.
+      const delay = Math.max(1, i * STAGGER);
       el.style.transition = `opacity ${FADE}ms ${EASING} ${delay}ms`;
       el.style.opacity = '0';
     });
@@ -316,7 +327,8 @@ async function fadeInProjectHeader() {
   // Fade in each column with internal stagger (all columns start at the same time)
   [col1, col2, col3].forEach(col => {
     col.forEach((el, i) => {
-      const delay = i * STAGGER;
+      // iOS Safari bug: transition-delay:0ms doesn't fire → use 1ms minimum.
+      const delay = Math.max(1, i * STAGGER);
       el.style.transition = `opacity ${FADE}ms ${EASING} ${delay}ms`;
       el.style.opacity = '1';
     });
@@ -481,6 +493,18 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
       (fromNs === 'information' && goingToProjects) ||
       (fromNs === 'projects' && goingToInfo && !footerVisible);
 
+    // Leaving details: start all exit animations immediately on click.
+    if (leavingDetails) {
+      await Promise.all([
+        defaultHandler(visit, args),
+        fadeOutProjectHeader(),
+        animateOutProjectProgress(),
+        slideOutProjectIndex(),
+        ...(detailsEnteredFrom === 'projects' ? [slideOutVideoControls()] : []),
+      ]);
+      return;
+    }
+
     const promises = [defaultHandler(visit, args)];
 
     // Home leave: slide out video-controls (unless going to details)
@@ -515,18 +539,6 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
       }
     }
 
-    // Leaving details
-    if (leavingDetails) {
-      promises.push(fadeOutProjectHeader());
-      promises.push(animateOutProjectProgress());
-      // Video-controls: only animate if we entered from projects
-      if (detailsEnteredFrom === 'projects') {
-        promises.push(slideOutVideoControls());
-      }
-      // Project-index out (always when leaving details)
-      promises.push(slideOutProjectIndex());
-    }
-
     await Promise.all(promises);
   });
 
@@ -534,6 +546,54 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
   swup.hooks.replace('animation:in:await', async (visit, args, defaultHandler) => {
     const toNs = getNamespace();
     const hasFooter = toNs === 'projects' || toNs === 'information';
+
+    // ── Pre-hide all slide-in elements before defaultHandler fires ──────────────
+    // Must happen synchronously here — once defaultHandler(visit, args) is called,
+    // the container starts fading in and any visible element causes a flash.
+    // Also sets opacity:'1' explicitly to prevent the html.is-animating CSS rule
+    // (opacity:0 on .transition-fade) from instantly hiding persistent elements
+    // before our JS slide animation takes over.
+    function preHideSlide(selector) {
+      const el = document.querySelector(selector);
+      if (!el) return;
+      el.style.opacity = '1';
+      el.style.transition = 'none';
+      el.style.transform = 'translateY(100%)';
+    }
+
+    // Details: pre-hide elements, then start all in-animations simultaneously with
+    // the container fade-in. Pre-hiding prevents any flash; elements appear as the
+    // page fades in — no wait for container to fully load before stagger starts.
+    if (toNs === 'details') {
+      const cols = getHeaderColumns();
+      if (cols) {
+        const { header, col1, col2, col3 } = cols;
+        header.style.transition = 'none';
+        header.style.opacity = '1';
+        [...col1, ...col2, ...col3].forEach(el => {
+          el.style.transition = 'none';
+          el.style.opacity = '0';
+        });
+      }
+      preHideSlide('.project-index');
+      if (detailsEnteredFrom === 'projects') preHideSlide('.video-controls');
+      await raf(); // commit hidden state before any animation starts
+
+      await Promise.all([
+        defaultHandler(visit, args),
+        fadeInProjectHeader(),
+        slideInProjectIndex(),
+        ...(detailsEnteredFrom === 'projects' ? [slideInVideoControls()] : []),
+      ]);
+      ensurePersistentState(toNs);
+      leavingDetails = false;
+      return;
+    }
+
+    // Standard pages: pre-hide before defaultHandler
+    if (toNs === 'home' && !leavingDetails) preHideSlide('.video-controls');
+    if (hasFooter && animateFooterIn)       preHideSlide('.footer');
+    if (leavingDetails && (toNs === 'home' || toNs === 'projects')) preHideSlide('.copyrights');
 
     const promises = [defaultHandler(visit, args)];
 
@@ -545,15 +605,6 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage }) {
     // Standard: slide in footer
     if (hasFooter && animateFooterIn) {
       promises.push(slideInFooter());
-    }
-
-    // Entering details (nav already hidden in out-animation)
-    if (toNs === 'details') {
-      promises.push(fadeInProjectHeader());
-      promises.push(slideInProjectIndex());
-      if (detailsEnteredFrom === 'projects') {
-        promises.push(slideInVideoControls());
-      }
     }
 
     // Copyrights in when leaving details to home/projects

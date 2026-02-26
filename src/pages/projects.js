@@ -5,7 +5,6 @@ let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
 let fadeObserver = null;
-let navH = 0;
 
 export function initProjects() {
   const items = document.querySelectorAll('.projects-item');
@@ -47,37 +46,19 @@ export function initProjects() {
     }, { signal });
   });
 
-  // Play/pause + fade nav selon viewport
-  const nav = document.querySelector('.nav');
-  navH = nav ? nav.getBoundingClientRect().height : 0;
-
+  // Play/pause selon viewport
   fadeObserver = new IntersectionObserver(
     entries => {
       entries.forEach(entry => {
         const video = entry.target.querySelector('.projects-cover-inner video');
-
         if (entry.isIntersecting) {
-          entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
-          entry.target.style.opacity = '';
-          entry.target.style.pointerEvents = '';
           if (video) video.play().catch(() => {});
         } else {
           if (video) video.pause();
-          if (entry.boundingClientRect.top < navH + 40) {
-            // Sorti par le haut (sous la nav) → fade out
-            entry.target.style.transition = `opacity ${FADE}ms ${EASING}`;
-            entry.target.style.opacity = '0.1';
-            entry.target.style.pointerEvents = 'none';
-          } else {
-            // Sorti par le bas → opacité normale
-            entry.target.style.transition = 'none';
-            entry.target.style.opacity = '';
-            entry.target.style.pointerEvents = '';
-          }
         }
       });
     },
-    { rootMargin: `-${navH + 40}px 0px 0px 0px`, threshold: 0 }
+    { threshold: 0 }
   );
   items.forEach(item => fadeObserver.observe(item));
 }
@@ -146,7 +127,6 @@ export function cleanupProjects() {
   });
 
   // Remove all listeners + reset state
-  navH = 0;
   if (fadeObserver) { fadeObserver.disconnect(); fadeObserver = null; }
   if (btnController) { btnController.abort(); btnController = null; }
   activeCategory = null;
