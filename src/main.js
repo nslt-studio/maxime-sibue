@@ -2,17 +2,17 @@ import { injectStyles } from './styles.js';
 import { runLoader } from './loader.js';
 import { initSwup, setProjectsNavState, resetProjectsNavState, setNavHidden } from './swup.js';
 import { initGlobal } from './global.js';
-import { initHome, cleanupHome } from './pages/home.js';
-import { initProjects, cleanupProjects } from './pages/projects.js';
-import { initInformation, cleanupInformation } from './pages/information.js';
-import { initDetails, cleanupDetails } from './pages/details.js';
+import { initHome, cleanupHome, freezeHome, startHome } from './pages/home.js';
+import { initProjects, cleanupProjects, freezeProjects, startProjects } from './pages/projects.js';
+import { initInformation, cleanupInformation, freezeInformation, startInformation } from './pages/information.js';
+import { initDetails, cleanupDetails, freezeDetails, startDetails } from './pages/details.js';
 
 // ── Page registry ───────────────────────────────────────
 const pages = {
-  home:        { init: initHome,        cleanup: cleanupHome },
-  projects:    { init: initProjects,    cleanup: cleanupProjects },
-  information: { init: initInformation, cleanup: cleanupInformation },
-  details:     { init: initDetails,     cleanup: cleanupDetails },
+  home:        { init: initHome,        cleanup: cleanupHome,        freeze: freezeHome,        start: startHome },
+  projects:    { init: initProjects,    cleanup: cleanupProjects,    freeze: freezeProjects,    start: startProjects },
+  information: { init: initInformation, cleanup: cleanupInformation, freeze: freezeInformation, start: startInformation },
+  details:     { init: initDetails,     cleanup: cleanupDetails,     freeze: freezeDetails,     start: startDetails },
 };
 
 function getNamespace() {
@@ -29,12 +29,22 @@ function cleanupCurrentPage() {
   if (ns && pages[ns]) pages[ns].cleanup();
 }
 
+function freezeCurrentPage() {
+  const ns = getNamespace();
+  if (ns && pages[ns]?.freeze) pages[ns].freeze();
+}
+
+function startCurrentPage() {
+  const ns = getNamespace();
+  if (ns && pages[ns]?.start) pages[ns].start();
+}
+
 // ── Boot ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   injectStyles();
   runLoader();
 
-  const swup = initSwup({ initCurrentPage, cleanupCurrentPage });
+  const swup = initSwup({ initCurrentPage, cleanupCurrentPage, freezeCurrentPage, startCurrentPage });
 
   initGlobal(swup);
 
@@ -49,4 +59,5 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initCurrentPage();
+  startCurrentPage(); // No swup animation on first load — start media immediately
 });

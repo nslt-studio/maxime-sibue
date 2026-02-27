@@ -1,3 +1,5 @@
+import { formatTime } from '../utils.js';
+
 // ── Config ──────────────────────────────────────────────
 const FADE = 300;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
@@ -7,6 +9,7 @@ let videos = [];
 let activeIndex = -1;
 let isMuted = true;
 let isPaused = false;
+let mediaStarted = false;
 let pauseBtnDefaultText = '';
 let rafId = null;
 let isPlaying = false;
@@ -24,12 +27,9 @@ export function initDetails() {
   formatServices();
 
   videos = [...document.querySelectorAll('#swup video')];
-
-  // Project items and index items (matched by title attribute)
   projectItems = [...document.querySelectorAll('[project-item]')];
   indexItems = [...document.querySelectorAll('.project-index-item[project-index]')];
 
-  // Click on index item → scroll to matching project item
   indexItems.forEach(indexItem => {
     indexItem.addEventListener('click', () => {
       const title = indexItem.getAttribute('project-index');
@@ -40,7 +40,6 @@ export function initDetails() {
       updateActiveIndex(title);
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // Unlock observer after scroll settles
       let timer = null;
       const scrollParent = target.closest('.project-item-wrapper') || window;
       const onEnd = () => {
@@ -56,12 +55,10 @@ export function initDetails() {
 
   initLoadingAnimations(signal);
 
-  // Setup each video
   videos.forEach((video, i) => {
     video.muted = true;
     video.preload = 'metadata';
 
-    // Start hidden, fade in when video has frames to show
     video.style.opacity = '0';
     video.style.transition = `opacity ${FADE}ms ${EASING}`;
     const show = () => { video.style.opacity = '1'; };
@@ -69,7 +66,6 @@ export function initDetails() {
     if (video.readyState >= 2) {
       show();
     } else {
-      // Don't load yet — setActive will trigger loading when this video becomes active
       video.addEventListener('loadeddata', show, { once: true, signal });
       video.addEventListener('playing', show, { once: true, signal });
     }
@@ -92,7 +88,6 @@ export function initDetails() {
     }, { signal });
   });
 
-  // IntersectionObserver on .project-item: activate matching index item + play video
   observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       const item = entry.target;
@@ -106,8 +101,7 @@ export function initDetails() {
         }
         if (videoIndex !== -1) {
           if (videoIndex === activeIndex) {
-            // Même vidéo qui revient dans le viewport → reprendre depuis la position actuelle
-            if (video && video.paused && !isPaused) {
+            if (video && video.paused && !isPaused && mediaStarted) {
               video.play().catch(() => {});
             }
           } else {
@@ -123,20 +117,17 @@ export function initDetails() {
 
   projectItems.forEach(item => observer.observe(item));
 
-  // Controls
   initControls(signal);
   initProgressBar(signal);
   startProgressLoop();
   initCloseButton();
 
-  // Init progress bar state
   const bar = document.querySelector('.progress-bar');
   if (bar) {
     bar.style.transformOrigin = 'left';
     bar.style.transform = 'scaleX(0)';
   }
 
-  // Animate project-progress in
   const progress = document.querySelector('.project-progress');
   if (progress) {
     progress.classList.remove('is-visible');
@@ -144,6 +135,27 @@ export function initDetails() {
       requestAnimationFrame(() => {
         progress.classList.add('is-visible');
       });
+    });
+  }
+}
+
+// ── Freeze (stop media before out-animation) ─────────────
+export function freezeDetails() {
+  const video = videos[activeIndex];
+  if (video) video.pause();
+  isPlaying = false;
+}
+
+// ── Start (begin media after in-animation) ───────────────
+export function startDetails() {
+  mediaStarted = true;
+  const video = videos[activeIndex];
+  if (video && !isPaused) {
+    if (video.readyState === 0) video.load();
+    video.play().catch(() => {
+      video.addEventListener('canplay', () => {
+        if (activeIndex >= 0 && !isPaused) video.play().catch(() => {});
+      }, { once: true, signal: abortController?.signal });
     });
   }
 }
@@ -162,7 +174,12 @@ export function cleanupDetails() {
   const progress = document.querySelector('.project-progress');
   if (progress) progress.classList.remove('is-visible');
 
-  indexItems.forEach(item => item.classList.remove('active'));
+  indexItems.forEach(item => {
+    item.classList.remove('active');
+    item.style.opacity = '';
+    item.style.transform = '';
+    item.style.transition = '';
+  });
   indexItems = [];
   projectItems = [];
   videos = [];
@@ -170,6 +187,7 @@ export function cleanupDetails() {
   isPaused = false;
   isMuted = true;
   isPlaying = false;
+  mediaStarted = false;
   rafId = null;
 }
 
@@ -194,7 +212,8 @@ function setActive(index) {
   const video = videos[index];
   if (video) {
     video.muted = isMuted;
-    if (!isPaused) {
+    // Only play if media has been started (deferred until after in-animation)
+    if (mediaStarted && !isPaused) {
       if (video.readyState === 0) video.load();
       video.play().catch(() => {
         video.addEventListener('canplay', () => {
@@ -204,7 +223,7 @@ function setActive(index) {
     }
   }
 
-  // Preload next video
+  // Preload next video (regardless of mediaStarted)
   const nextVideo = videos[index + 1];
   if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
 }
@@ -294,7 +313,6 @@ function initLoadingAnimations(signal) {
       .find(p => p.textContent.trim() === 'Chargement');
     if (!loadingEl) return;
 
-    // Split each character into an animated span
     const chars = [...loadingEl.textContent];
     const n = chars.length;
     loadingEl.innerHTML = chars
@@ -304,7 +322,6 @@ function initLoadingAnimations(signal) {
     const video = item.querySelector('video');
     if (!video) return;
 
-    // Fade out once video actually plays
     video.addEventListener('playing', () => {
       loadingEl.style.transition = `opacity ${FADE}ms ${EASING}`;
       loadingEl.style.opacity = '0';
@@ -312,30 +329,17 @@ function initLoadingAnimations(signal) {
   });
 }
 
-// ── Close button (set href, let Swup handle navigation) ─
+// ── Close button ────────────────────────────────────────
 function initCloseButton() {
   const closeBtn = document.querySelector('#close');
   if (!closeBtn) return;
-
   closeBtn.setAttribute('href', window.__detailsReturnUrl || '/');
 }
 
-// ── Format services (wrap each in a block span for stagger animation) ─
+// ── Format services ──────────────────────────────────────
 function formatServices() {
   const el = document.querySelector('#services');
   if (!el) return;
   const parts = el.textContent.split(',').map(s => s.trim()).filter(Boolean);
   el.innerHTML = parts.map(p => `<span style="display:block">${p}</span>`).join('');
-}
-
-// ── Format time as 00:00:000 ────────────────────────────
-function formatTime(seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 1000);
-  return (
-    String(mins).padStart(2, '0') + ':' +
-    String(secs).padStart(2, '0') + ':' +
-    String(ms).padStart(3, '0')
-  );
 }

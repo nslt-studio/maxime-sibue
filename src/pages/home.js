@@ -1,3 +1,5 @@
+import { formatTime } from '../utils.js';
+
 // ── Config ──────────────────────────────────────────────
 const SNAP_MARGIN = 200;
 const TRANSITION = 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)';
@@ -9,12 +11,12 @@ let posters = [];
 let activeIndex = -1;
 let isMuted = true;
 let isPaused = false;
+let mediaStarted = false;
 let pauseBtnDefaultText = '';
 let rafId = null;
 let scrollRafId = null;
 let list = null;
 let isScrollingTo = -1;
-
 let isPlaying = false;
 
 // ── Init ────────────────────────────────────────────────
@@ -27,13 +29,10 @@ export function initHome() {
     const video = item.querySelector('.selected-full video');
     if (!video) return;
 
-    // Remove loop for auto-advance, ensure muted
     video.removeAttribute('loop');
     video.muted = true;
     videos[i] = video;
 
-    // Poster fade as soon as video data is ready — even if item isn't active yet.
-    // This ensures the poster is already hidden by the time the user scrolls to it.
     const poster = item.querySelector('.selected-full-poster');
     posters[i] = poster;
 
@@ -50,12 +49,10 @@ export function initHome() {
       scrollToItem((i + 1) % items.length);
     });
 
-    // 'playing' fires only when video is ACTUALLY rendering (not just buffering)
     video.addEventListener('playing', () => {
       if (i === activeIndex) isPlaying = true;
     });
 
-    // 'waiting' fires when video stalls (buffering)
     video.addEventListener('waiting', () => {
       if (i === activeIndex) isPlaying = false;
     });
@@ -63,7 +60,6 @@ export function initHome() {
     video.addEventListener('pause', () => {
       if (i === activeIndex) isPlaying = false;
     });
-
   });
 
   list.addEventListener('scroll', onScroll, { passive: true });
@@ -74,11 +70,30 @@ export function initHome() {
   setActive(0);
 }
 
+// ── Freeze (stop media before out-animation) ─────────────
+export function freezeHome() {
+  const video = videos[activeIndex];
+  if (video) video.pause();
+  isPlaying = false;
+}
+
+// ── Start (begin media after in-animation) ───────────────
+export function startHome() {
+  mediaStarted = true;
+  const video = videos[activeIndex];
+  if (video && !isPaused) {
+    video.play().catch(() => {
+      video.addEventListener('canplay', () => {
+        if (activeIndex >= 0 && !isPaused) video.play().catch(() => {});
+      }, { once: true });
+    });
+  }
+}
+
 // ── Cleanup ─────────────────────────────────────────────
 export function cleanupHome() {
   cancelAnimationFrame(rafId);
   cancelAnimationFrame(scrollRafId);
-  // Cancel all video downloads (free bandwidth for next page)
   videos.forEach(v => {
     if (v) {
       v.pause();
@@ -97,10 +112,11 @@ export function cleanupHome() {
   isPaused = false;
   isMuted = true;
   isPlaying = false;
+  mediaStarted = false;
   rafId = null;
 }
 
-// ── Click item (just mark active + scroll) ──────────────
+// ── Click item ───────────────────────────────────────────
 function clickItem(index) {
   if (!list || !items[index]) return;
   isScrollingTo = index;
@@ -182,8 +198,6 @@ function scrollToItem(index) {
   const pauseBtn = document.querySelector('[data-controls="pause"]');
   if (pauseBtn && pauseBtnDefaultText) pauseBtn.textContent = pauseBtnDefaultText;
 
-  // Wait for scroll to complete before starting video — prevents poster flicker and
-  // video playback from firing timeupdate (which hides the poster) during the scroll.
   let timer = null;
   const onEnd = () => {
     clearTimeout(timer);
@@ -204,7 +218,6 @@ function setActive(index) {
 
   items.forEach((item, i) => item.classList.toggle('active', i === index));
 
-  // Reset previous item: video to 0, progress to 0, poster back to visible
   if (prev >= 0) {
     const prevVideo = videos[prev];
     if (prevVideo) {
@@ -223,7 +236,8 @@ function setActive(index) {
   const video = videos[index];
   if (video) {
     video.muted = isMuted;
-    if (!isPaused) {
+    // Only play if media has been started (deferred until after in-animation)
+    if (mediaStarted && !isPaused) {
       video.play().catch(() => {
         video.addEventListener('canplay', () => {
           if (activeIndex === index && !isPaused) video.play().catch(() => {});
@@ -232,7 +246,7 @@ function setActive(index) {
     }
   }
 
-  // Preload next 2 videos so their posters (canplay) hide before the user scrolls to them
+  // Preload next 2 videos (regardless of mediaStarted — preloading is fine)
   for (let offset = 1; offset <= 2; offset++) {
     const nextIdx = (index + offset) % items.length;
     if (nextIdx === index) continue;
@@ -308,16 +322,4 @@ function toggleMute() {
 
   const video = videos[activeIndex];
   if (video) video.muted = isMuted;
-}
-
-// ── Format time as 00:00:000 ────────────────────────────
-function formatTime(seconds) {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 1000);
-  return (
-    String(mins).padStart(2, '0') + ':' +
-    String(secs).padStart(2, '0') + ':' +
-    String(ms).padStart(3, '0')
-  );
 }

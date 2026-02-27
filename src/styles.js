@@ -7,6 +7,7 @@ export function injectStyles() {
     .transition-fade {
       opacity: 1;
       transition: opacity ${DURATION}ms ${EASING};
+      will-change: opacity;
     }
 
     html.is-animating .transition-fade {
@@ -16,12 +17,14 @@ export function injectStyles() {
     /* === CATEGORIES NAV (items hidden by default, managed by swup.js) === */
     .categories-item {
       opacity: 0;
+      will-change: opacity;
     }
 
     /* === SELECTED CAROUSEL (HOME) === */
     .selected-progress {
       opacity: 0;
       transition: opacity ${DURATION}ms ${EASING};
+      will-change: opacity;
     }
 
     .selected-item.active .selected-progress,
@@ -64,7 +67,8 @@ export function injectStyles() {
     /* === PROJECT PROGRESS BAR (details page, CSS animation) === */
     .project-progress {
       width: 0;
-      transition: width ${2 * DURATION}ms ${EASING};
+      transition: width ${DURATION}ms ${EASING};
+      will-change: width;
     }
 
     .project-progress.is-visible {

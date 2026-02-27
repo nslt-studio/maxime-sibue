@@ -1,3 +1,5 @@
+import { wait } from '../utils.js';
+
 const FADE = 300;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
@@ -5,12 +7,15 @@ let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
 let fadeObserver = null;
+let isFiltering = false;
+let observedItems = [];
 
 export function initProjects() {
   const items = document.querySelectorAll('.projects-item');
   if (!items.length) return;
 
-  // Abort any previous listeners on persistent nav buttons
+  observedItems = [...items];
+
   if (btnController) btnController.abort();
   btnController = new AbortController();
   const signal = btnController.signal;
@@ -24,12 +29,10 @@ export function initProjects() {
 
   // Reset any stale inline styles on items
   document.querySelectorAll('.projects-item[data-filter]').forEach(item => {
-    item.style.height = '';
-    item.style.overflow = '';
-    item.style.transition = '';
+    item.style.display = '';
   });
 
-  items.forEach(item => {
+  observedItems.forEach(item => {
     const video = item.querySelector('.projects-cover-inner video');
     const poster = item.querySelector('.projects-cover-inner .projects-cover-poster');
     if (!video) return;
@@ -45,8 +48,15 @@ export function initProjects() {
       }
     }, { signal });
   });
+}
 
-  // Play/pause selon viewport
+// ── Freeze (stop media before out-animation) ─────────────
+export function freezeProjects() {
+  document.querySelectorAll('.projects-cover-inner video').forEach(v => v.pause());
+}
+
+// ── Start (begin observing after in-animation) ───────────
+export function startProjects() {
   fadeObserver = new IntersectionObserver(
     entries => {
       entries.forEach(entry => {
@@ -60,12 +70,16 @@ export function initProjects() {
     },
     { threshold: 0 }
   );
-  items.forEach(item => fadeObserver.observe(item));
+  observedItems.forEach(item => fadeObserver.observe(item));
 }
 
 // ── Category filtering (single-select) ───────────────────
-function onCategoryClick(btn) {
+async function onCategoryClick(btn) {
+  if (isFiltering) return;
+  isFiltering = true;
+
   const category = btn.dataset.categories;
+  const list = document.querySelector('.projects-list');
 
   if (activeCategory === category) {
     activeCategory = null;
@@ -76,46 +90,24 @@ function onCategoryClick(btn) {
     btn.classList.add('active');
   }
 
-  applyFilter();
-}
+  if (list) {
+    list.style.transition = `opacity ${FADE}ms ${EASING}`;
+    list.style.opacity = '0';
+    await wait(FADE);
+  }
 
-function applyFilter() {
   document.querySelectorAll('.projects-item[data-filter]').forEach(item => {
     const shouldShow = !activeCategory || activeCategory === item.dataset.filter;
-    if (shouldShow) {
-      expandItem(item);
-    } else {
-      collapseItem(item);
-    }
+    item.style.display = shouldShow ? '' : 'none';
   });
-}
 
-function collapseItem(item) {
-  if (item.style.height === '0px') return;
-  const h = item.offsetHeight;
-  item.style.height = h + 'px';
-  item.style.overflow = 'hidden';
-  item.offsetHeight; // force reflow
-  item.style.transition = `height ${FADE}ms ${EASING}`;
-  item.style.height = '0px';
-}
+  if (list) {
+    list.style.opacity = '1';
+    await wait(FADE);
+    list.style.transition = '';
+  }
 
-function expandItem(item) {
-  if (!item.style.height || item.style.height === '') return;
-  item.style.transition = 'none';
-  item.style.height = '';
-  item.style.overflow = '';
-  const h = item.offsetHeight;
-  item.style.height = '0px';
-  item.style.overflow = 'hidden';
-  item.offsetHeight; // force reflow
-  item.style.transition = `height ${FADE}ms ${EASING}`;
-  item.style.height = h + 'px';
-  item.addEventListener('transitionend', () => {
-    item.style.height = '';
-    item.style.overflow = '';
-    item.style.transition = '';
-  }, { once: true });
+  isFiltering = false;
 }
 
 export function cleanupProjects() {
@@ -126,18 +118,23 @@ export function cleanupProjects() {
     v.load();
   });
 
-  // Remove all listeners + reset state
   if (fadeObserver) { fadeObserver.disconnect(); fadeObserver = null; }
   if (btnController) { btnController.abort(); btnController = null; }
   activeCategory = null;
+  isFiltering = false;
   categoryButtons.forEach(btn => btn.classList.remove('active'));
   categoryButtons = [];
+  observedItems = [];
 
   document.querySelectorAll('.projects-item[data-filter]').forEach(item => {
-    item.style.height = '';
-    item.style.overflow = '';
-    item.style.transition = '';
+    item.style.display = '';
     item.style.opacity = '';
     item.style.pointerEvents = '';
   });
+
+  const list = document.querySelector('.projects-list');
+  if (list) {
+    list.style.opacity = '';
+    list.style.transition = '';
+  }
 }

@@ -1,7 +1,7 @@
 const FADE = 400;
 const EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
-const STEP = 100;       // ms between each item
-const HOLD = 300;      // ms to hold last item before collapsing
+const STEP = 100;   // ms between each item
+const HOLD = 300;   // ms to hold last item before collapsing
 const KEY = 'loaderDone';
 
 export function runLoader() {
@@ -14,33 +14,47 @@ export function runLoader() {
   const items = loader ? [...loader.querySelectorAll('.loader-item')] : [];
   if (!loader || !items.length) return;
 
-  // Ensure all items start hidden
+  // Freeze height immediately — before video loading can trigger layout shifts
+  loader.style.height = loader.offsetHeight + 'px';
+  loader.style.overflow = 'hidden';
+
+  // Start all items hidden
   items.forEach(item => { item.style.opacity = '0'; });
 
-  let i = 0;
+  let index = -1;
+  let lastTime = null;
 
-  const interval = setInterval(() => {
-    // Hide previous
-    if (i > 0) items[i - 1].style.opacity = '0';
+  function step(now) {
+    if (lastTime === null) lastTime = now;
 
-    // Show current
-    items[i].style.opacity = '1';
+    // Only advance when STEP ms have elapsed in real rendering time.
+    // Using rAF timestamps (not setInterval) prevents catch-up flooding
+    // when the browser is busy (video decoding, layout, etc.).
+    if (now - lastTime >= STEP) {
+      if (index >= 0) items[index].style.opacity = '0';
+      index++;
+      lastTime = now;
 
-    i++;
+      if (index < items.length) items[index].style.opacity = '1';
 
-    if (i >= items.length) {
-      clearInterval(interval);
-      // Last item stays visible, wait then collapse
-      setTimeout(() => collapseLoader(loader), HOLD);
+      if (index >= items.length - 1) {
+        // All items have cycled — wait HOLD ms, then prime the browser
+        // with a double-rAF before starting the height transition.
+        setTimeout(() => {
+          requestAnimationFrame(() => requestAnimationFrame(() => collapseLoader(loader)));
+        }, HOLD);
+        return;
+      }
     }
-  }, STEP);
+
+    requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
 }
 
 function collapseLoader(loader) {
-  const h = loader.offsetHeight;
-  loader.style.height = h + 'px';
-  loader.style.overflow = 'hidden';
-  void loader.offsetHeight; // force reflow
+  // Height is already frozen (set at startup), just animate to 0
   loader.style.transition = `height ${FADE}ms ${EASING}`;
   loader.style.height = '0px';
 

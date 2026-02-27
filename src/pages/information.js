@@ -18,8 +18,16 @@ export function initInformation() {
       poster.style.pointerEvents = 'none';
     }
   });
+}
 
-  // Play immediately
+// ── Freeze (stop media before out-animation) ─────────────
+export function freezeInformation() {
+  if (video) video.pause();
+}
+
+// ── Start (begin media after in-animation) ───────────────
+export function startInformation() {
+  if (!video) return;
   video.play().catch(() => {
     video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
   });
