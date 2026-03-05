@@ -5,7 +5,7 @@ import { wait } from './utils.js';
 // ── Config ──────────────────────────────────────────────
 const FADE    = 300; // ms – fade duration per element
 const STAGGER = 50;  // ms – delay between each categories-item
-const EASING  = 'cubic-bezier(0.4, 0, 0.2, 1)';
+const EASING  = 'cubic-bezier(0.75, 0, 0.2, 1)';
 
 // ── Helpers ─────────────────────────────────────────────
 function getNamespace() {
@@ -158,6 +158,44 @@ export function resetProjectsNavState() {
     item.style.transition = 'none';
     item.style.opacity = '0';
   });
+}
+
+// ── Logo width: responsive target ───────────────────────
+function logoCollapsedWidth() {
+  return window.innerWidth <= 768 ? '100%' : '65%';
+}
+// Note: on mobile logoCollapse/Expand are no-ops (100%→100%)
+
+// ── Logo width: instant state setters ───────────────────
+export function setLogoCollapsed() {
+  const el = document.querySelector('.logo-link');
+  if (!el) return;
+  el.style.transition = 'none';
+  el.style.width = logoCollapsedWidth();
+}
+
+export function resetLogoWidth() {
+  const el = document.querySelector('.logo-link');
+  if (!el) return;
+  el.style.transition = 'none';
+  el.style.width = '';
+}
+
+// ── Logo width: animated transitions ────────────────────
+async function logoCollapse() {
+  const el = document.querySelector('.logo-link');
+  if (!el) return;
+  el.style.transition = `width ${FADE}ms ${EASING}`;
+  el.style.width = logoCollapsedWidth();
+  await wait(FADE);
+}
+
+async function logoExpand() {
+  const el = document.querySelector('.logo-link');
+  if (!el) return;
+  el.style.transition = `width ${FADE}ms ${EASING}`;
+  el.style.width = '100%';
+  await wait(FADE);
 }
 
 // ── Set nav hidden (no animation, for direct details load) ─
@@ -409,6 +447,8 @@ export function initSwup({ initCurrentPage, cleanupCurrentPage, freezeCurrentPag
     const promises = [defaultHandler(visit, args)];
 
     if (fromNs === 'home' && !goingToDetails) promises.push(slideOut('.video-controls'));
+    if (goingToProjects && !leavingDetails) promises.push(logoCollapse());
+    if (fromNs === 'projects' && (goingToHome || goingToInfo)) promises.push(logoExpand());
     if (shouldAnimateFooter) promises.push(slideOut('.footer'));
     if (goingToProjects && !leavingDetails) promises.push(navToProjects());
     if (leavingProjects && !goingToDetails) promises.push(navFromProjects());

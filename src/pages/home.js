@@ -26,6 +26,9 @@ export function initHome() {
   if (!list || !items.length) return;
 
   items.forEach((item, i) => {
+    const bar = item.querySelector('.selected-progress');
+    if (bar) bar.style.opacity = 0;
+
     const video = item.querySelector('.selected-full video');
     if (!video) return;
 
@@ -51,7 +54,11 @@ export function initHome() {
     });
 
     video.addEventListener('playing', () => {
-      if (i === activeIndex) isPlaying = true;
+      if (i === activeIndex) {
+        isPlaying = true;
+        const bar = items[i]?.querySelector('.selected-progress');
+        if (bar) bar.style.opacity = 1;
+      }
     });
 
     video.addEventListener('waiting', () => {
@@ -226,9 +233,13 @@ function setActive(index) {
       prevVideo.currentTime = 0;
     }
     const prevBar = items[prev]?.querySelector('.selected-progress');
-    if (prevBar) prevBar.style.left = '0%';
-    const prevCover = items[prev]?.querySelector('.selected-cover');
-    if (prevCover) prevCover.style.setProperty('--progress', '0%');
+    if (prevBar) { prevBar.style.left = '0%'; prevBar.style.opacity = 0; }
+    const prevTitles = items[prev]?.querySelector('.selected-titles');
+    if (prevTitles) {
+      prevTitles.style.webkitMaskImage = '';
+      prevTitles.style.maskImage = '';
+      prevTitles.style.opacity = '';
+    }
   }
 
   isPlaying = false;
@@ -281,10 +292,17 @@ function updateProgressUI(progress, currentTime) {
   const pct = `${(progress * 100).toFixed(2)}%`;
 
   const bar = item.querySelector('.selected-progress');
-  if (bar) bar.style.left = pct;
+  if (bar) {
+    bar.style.left = pct;
+  }
 
-  const cover = item.querySelector('.selected-cover');
-  if (cover) cover.style.setProperty('--progress', pct);
+  const titles = item.querySelector('.selected-titles');
+  if (titles) {
+    titles.style.opacity = 1;
+    const gradient = `linear-gradient(to right, black ${pct}, rgba(0,0,0,0.4) ${pct})`;
+    titles.style.webkitMaskImage = gradient;
+    titles.style.maskImage = gradient;
+  }
 
   const durationEl = document.querySelector('#videoDuration');
   if (durationEl) durationEl.textContent = formatTime(currentTime);

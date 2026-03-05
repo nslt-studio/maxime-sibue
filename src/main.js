@@ -1,6 +1,6 @@
 import { injectStyles } from './styles.js';
 import { runLoader } from './loader.js';
-import { initSwup, setProjectsNavState, resetProjectsNavState, setNavHidden } from './swup.js';
+import { initSwup, setProjectsNavState, resetProjectsNavState, setNavHidden, setLogoCollapsed } from './swup.js';
 import { initGlobal } from './global.js';
 import { initHome, cleanupHome, freezeHome, startHome } from './pages/home.js';
 import { initProjects, cleanupProjects, freezeProjects, startProjects } from './pages/projects.js';
@@ -48,12 +48,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initGlobal(swup);
 
-  // Initial page load: set nav state instantly (no animation)
-  if (getNamespace() === 'projects') {
+  // Initial page load: set nav + logo state instantly (no animation)
+  const ns = getNamespace();
+  if (ns === 'projects') {
     setProjectsNavState();
-  } else if (getNamespace() === 'details') {
+    setLogoCollapsed();
+  } else if (ns === 'details') {
     resetProjectsNavState();
     setNavHidden();
+  } else if (ns === 'information') {
+    resetProjectsNavState();
   } else {
     resetProjectsNavState();
   }
