@@ -8,6 +8,8 @@ export function initInformation() {
   const poster = document.querySelector('.background-full-poster');
   if (!video) return;
 
+  video.preload = 'metadata';
+
   // Poster fade on first frame
   let posterHidden = false;
   video.addEventListener('timeupdate', () => {

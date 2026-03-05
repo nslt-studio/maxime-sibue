@@ -68,7 +68,7 @@ export function startProjects() {
         }
       });
     },
-    { threshold: 0 }
+    { threshold: 0.3 }
   );
   observedItems.forEach(item => fadeObserver.observe(item));
 }

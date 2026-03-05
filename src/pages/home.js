@@ -31,6 +31,7 @@ export function initHome() {
 
     video.removeAttribute('loop');
     video.muted = true;
+    video.preload = 'metadata';
     videos[i] = video;
 
     const poster = item.querySelector('.selected-full-poster');
@@ -246,12 +247,15 @@ function setActive(index) {
     }
   }
 
-  // Preload next 2 videos (regardless of mediaStarted — preloading is fine)
-  for (let offset = 1; offset <= 2; offset++) {
-    const nextIdx = (index + offset) % items.length;
-    if (nextIdx === index) continue;
-    const nextVideo = videos[nextIdx];
-    if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
+  // Preload next video — skip on slow connections (2G/slow-2G)
+  const conn = navigator.connection;
+  const isSlow = conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g');
+  if (!isSlow) {
+    const nextIdx = (index + 1) % items.length;
+    if (nextIdx !== index) {
+      const nextVideo = videos[nextIdx];
+      if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
+    }
   }
 }
 
