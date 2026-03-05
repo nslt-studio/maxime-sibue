@@ -7,6 +7,7 @@ let activeCategory = null;
 let categoryButtons = [];
 let btnController = null;
 let fadeObserver = null;
+let preloadObserver = null;
 let isFiltering = false;
 let observedItems = [];
 
@@ -36,10 +37,11 @@ export function initProjects() {
     const video = item.querySelector('.projects-cover-inner video');
     const poster = item.querySelector('.projects-cover-inner .projects-cover-poster');
     if (!video) return;
+    video.preload = 'metadata';
 
-    // Poster fade when video starts playing
+    // Poster fade when video can start playing
     let posterHidden = false;
-    video.addEventListener('playing', () => {
+    video.addEventListener('canplay', () => {
       if (!posterHidden && poster) {
         posterHidden = true;
         poster.style.transition = `opacity ${FADE}ms ${EASING}`;
@@ -55,22 +57,52 @@ export function freezeProjects() {
   document.querySelectorAll('.projects-cover-inner video').forEach(v => v.pause());
 }
 
+// ── Lazy-load a video's source from data-src ─────────────
+function loadVideoSrc(video) {
+  const source = video.querySelector('source[data-src]');
+  if (!source) return;
+  source.src = source.dataset.src;
+  source.removeAttribute('data-src');
+  video.load();
+}
+
 // ── Start (begin observing after in-animation) ───────────
 export function startProjects() {
+  // Preload observer: load src for videos approaching from below
+  preloadObserver = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const video = entry.target.querySelector('.projects-cover-inner video');
+        if (!video) return;
+        loadVideoSrc(video);
+        preloadObserver.unobserve(entry.target);
+      });
+    },
+    { rootMargin: '0px 0px 50% 0px', threshold: 0 }
+  );
+
+  // Play/pause observer: based on actual viewport visibility
   fadeObserver = new IntersectionObserver(
     entries => {
       entries.forEach(entry => {
         const video = entry.target.querySelector('.projects-cover-inner video');
+        if (!video) return;
         if (entry.isIntersecting) {
-          if (video) video.play().catch(() => {});
+          loadVideoSrc(video);
+          video.play().catch(() => {});
         } else {
-          if (video) video.pause();
+          video.pause();
         }
       });
     },
     { threshold: 0.3 }
   );
-  observedItems.forEach(item => fadeObserver.observe(item));
+
+  observedItems.forEach(item => {
+    preloadObserver.observe(item);
+    fadeObserver.observe(item);
+  });
 }
 
 // ── Category filtering (single-select) ───────────────────
@@ -119,6 +151,7 @@ export function cleanupProjects() {
   });
 
   if (fadeObserver) { fadeObserver.disconnect(); fadeObserver = null; }
+  if (preloadObserver) { preloadObserver.disconnect(); preloadObserver = null; }
   if (btnController) { btnController.abort(); btnController = null; }
   activeCategory = null;
   isFiltering = false;

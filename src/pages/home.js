@@ -19,6 +19,15 @@ let list = null;
 let isScrollingTo = -1;
 let isPlaying = false;
 
+// ── Lazy-load a video's source from data-src ─────────────
+function loadVideoSrc(video) {
+  const source = video.querySelector('source[data-src]');
+  if (!source) return;
+  source.src = source.dataset.src;
+  source.removeAttribute('data-src');
+  video.load();
+}
+
 // ── Init ────────────────────────────────────────────────
 export function initHome() {
   list = document.querySelector('.selected-list');
@@ -90,6 +99,7 @@ export function startHome() {
   mediaStarted = true;
   const video = videos[activeIndex];
   if (video && !isPaused) {
+    loadVideoSrc(video);
     video.play().catch(() => {
       video.addEventListener('canplay', () => {
         if (activeIndex >= 0 && !isPaused) video.play().catch(() => {});
@@ -245,8 +255,14 @@ function setActive(index) {
   isPlaying = false;
   updateProgressUI(0, 0);
 
+  const bar = items[index]?.querySelector('.selected-progress');
+  if (bar) bar.style.opacity = 0.4;
+
   const video = videos[index];
   if (video) {
+    loadVideoSrc(video);
+    video.preload = 'auto';
+    if (video.readyState <= 1) video.load();
     video.muted = isMuted;
     // Only play if media has been started (deferred until after in-animation)
     if (mediaStarted && !isPaused) {
@@ -258,14 +274,16 @@ function setActive(index) {
     }
   }
 
-  // Preload next video — skip on slow connections (2G/slow-2G)
+  // Preload next 2 videos — skip on slow connections (2G/slow-2G)
   const conn = navigator.connection;
   const isSlow = conn && (conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g');
   if (!isSlow) {
-    const nextIdx = (index + 1) % items.length;
-    if (nextIdx !== index) {
-      const nextVideo = videos[nextIdx];
-      if (nextVideo && nextVideo.readyState <= 1) nextVideo.load();
+    for (let offset = 1; offset <= 2; offset++) {
+      const nextIdx = (index + offset) % items.length;
+      if (nextIdx !== index) {
+        const nextVideo = videos[nextIdx];
+        if (nextVideo) loadVideoSrc(nextVideo);
+      }
     }
   }
 }

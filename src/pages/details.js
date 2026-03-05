@@ -14,10 +14,20 @@ let pauseBtnDefaultText = '';
 let rafId = null;
 let isPlaying = false;
 let observer = null;
+let preloadObserver = null;
 let abortController = null;
 let projectItems = [];
 let indexItems = [];
 let isScrollingToItem = false;
+
+// ── Lazy-load a video's source from data-src ─────────────
+function loadVideoSrc(video) {
+  const source = video.querySelector('source[data-src]');
+  if (!source) return;
+  source.src = source.dataset.src;
+  source.removeAttribute('data-src');
+  video.load();
+}
 
 // ── Init ────────────────────────────────────────────────
 export function initDetails() {
@@ -100,6 +110,7 @@ export function initDetails() {
           if (title) updateActiveIndex(title);
         }
         if (videoIndex !== -1) {
+          if (video) loadVideoSrc(video);
           if (videoIndex === activeIndex) {
             if (video && video.paused && !isPaused && mediaStarted) {
               video.play().catch(() => {});
@@ -116,6 +127,20 @@ export function initDetails() {
   }, { threshold: 0.5 });
 
   projectItems.forEach(item => observer.observe(item));
+
+  preloadObserver = new IntersectionObserver(
+    entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const video = entry.target.querySelector('video');
+        if (!video) return;
+        loadVideoSrc(video);
+        preloadObserver.unobserve(entry.target);
+      });
+    },
+    { rootMargin: '0px 0px 50% 0px', threshold: 0 }
+  );
+  projectItems.forEach(item => preloadObserver.observe(item));
 
   initControls(signal);
   initProgressBar(signal);
@@ -151,7 +176,7 @@ export function startDetails() {
   mediaStarted = true;
   const video = videos[activeIndex];
   if (video && !isPaused) {
-    if (video.readyState === 0) video.load();
+    loadVideoSrc(video);
     video.play().catch(() => {
       video.addEventListener('canplay', () => {
         if (activeIndex >= 0 && !isPaused) video.play().catch(() => {});
@@ -164,6 +189,7 @@ export function startDetails() {
 export function cleanupDetails() {
   cancelAnimationFrame(rafId);
   if (observer) { observer.disconnect(); observer = null; }
+  if (preloadObserver) { preloadObserver.disconnect(); preloadObserver = null; }
   if (abortController) { abortController.abort(); abortController = null; }
   videos.forEach(v => {
     v.pause();
@@ -211,10 +237,12 @@ function setActive(index) {
 
   const video = videos[index];
   if (video) {
+    loadVideoSrc(video);
+    video.preload = 'auto';
+    if (video.readyState <= 1) video.load();
     video.muted = isMuted;
     // Only play if media has been started (deferred until after in-animation)
     if (mediaStarted && !isPaused) {
-      if (video.readyState === 0) video.load();
       video.play().catch(() => {
         video.addEventListener('canplay', () => {
           if (activeIndex === index && !isPaused) video.play().catch(() => {});
