@@ -36,7 +36,10 @@ export function initHome() {
 
   items.forEach((item, i) => {
     const bar = item.querySelector('.selected-progress');
-    if (bar) bar.style.opacity = 0;
+    if (bar) {
+      bar.style.transition = 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)';
+      bar.style.transform = 'translateY(-50%) scaleY(0)';
+    }
 
     const video = item.querySelector('.selected-full video');
     if (!video) return;
@@ -66,7 +69,7 @@ export function initHome() {
       if (i === activeIndex) {
         isPlaying = true;
         const bar = items[i]?.querySelector('.selected-progress');
-        if (bar) bar.style.opacity = 1;
+        if (bar) bar.style.transform = 'translateY(-50%) scaleY(1)';
       }
     });
 
@@ -243,7 +246,7 @@ function setActive(index) {
       prevVideo.currentTime = 0;
     }
     const prevBar = items[prev]?.querySelector('.selected-progress');
-    if (prevBar) { prevBar.style.left = '0%'; prevBar.style.opacity = 0; }
+    if (prevBar) { prevBar.style.left = '0%'; prevBar.style.transform = 'scaleY(0)'; }
     const prevTitles = items[prev]?.querySelector('.selected-titles');
     if (prevTitles) {
       prevTitles.style.webkitMaskImage = '';
@@ -256,7 +259,7 @@ function setActive(index) {
   updateProgressUI(0, 0);
 
   const bar = items[index]?.querySelector('.selected-progress');
-  if (bar) bar.style.opacity = 0.4;
+  if (bar) bar.style.transform = 'translateY(-50%) scaleY(0)';
 
   const video = videos[index];
   if (video) {
